@@ -1,0 +1,13 @@
+# 现有依赖
+psycopg2-binary>=2.9.0
+pandas>=1.5.0
+numpy>=1.21.0
+requests>=2.28.0
+python-dotenv>=0.19.0
+pytz>=2022.1
+textblob>=0.17.0
+
+# 去同质化v2新增依赖
+scikit-learn>=1.4.0
+ruamel.yaml>=0.18.0
+sqlalchemy>=1.4.0 

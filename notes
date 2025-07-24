@@ -1,0 +1,177 @@
+docker compose exec postgres \
+   psql -U airflow -d ainews \
+  -c "$(cat <<'SQL'
+CREATE TABLE IF NOT EXISTS raw_events (
+    id            BIGSERIAL PRIMARY KEY,
+    source        VARCHAR(32),
+    title         TEXT,
+    body          TEXT,
+    published_at  TIMESTAMPTZ,
+    url           TEXT UNIQUE,
+    likes         INT,
+    retweets      INT,
+    collected_at  TIMESTAMPTZ DEFAULT now()
+);
+SQL
+)"
+
+docker compose exec postgres \
+   psql -U airflow -d ainews \
+  -c "$(cat <<'SQL'
+CREATE TABLE IF NOT EXISTS summaries (
+    id          BIGSERIAL PRIMARY KEY,
+    raw_id      BIGINT UNIQUE
+                REFERENCES raw_events(id) ON DELETE CASCADE,
+    summary_cn  TEXT          NOT NULL,
+    summary_en  TEXT          NOT NULL,
+    created_at  TIMESTAMPTZ   DEFAULT now()
+);
+SQL
+)"
+
+
+docker compose exec postgres \
+  psql -U airflow -d ainews \
+  -c "SELECT id, source, left(title,50) AS title_snip, published_at
+      FROM raw_events
+      ORDER BY id DESC
+      LIMIT 3;"
+
+
+docker compose exec postgres \
+  psql -U airflow -d ainews \
+  -c "SELECT COUNT(*) FROM summaries;"
+
+  docker compose exec postgres \
+  psql -U airflow -d ainews \
+  -c "SELECT raw_id, left(summary_cn,40) AS cn_snip,
+              left(summary_en,40) AS en_snip,
+              created_at
+        FROM summaries
+    ORDER BY created_at DESC
+       LIMIT 5;"
+
+
+
+如果你想让 所有 raw_events 重新进入队列，只要把整个 summaries 表清空就行：
+
+
+docker compose exec postgres \
+  psql -U airflow -d ainews \
+  -c "TRUNCATE TABLE summaries RESTART IDENTITY;"
+
+
+  # 查看卷是否存在
+docker volume ls | grep pgadmin-data
+
+# 进入卷目录（Linux/macOS）
+docker volume inspect pgadmin-data \
+  --format '{{ .Mountpoint }}'
+
+# 备份 pgAdmin 配置（可选）
+docker run --rm -v pgadmin-data:/data alpine \
+  tar -czf - -C /data . > pgadmin_backup_$(date +%F).tgz
+
+# X API token
+AAAAAAAAAAAAAAAAAAAAAP3F2wEAAAAAPNnxg%2BkM9yKvujP7EvTvI7LhaYs%3DOQidUwRyYu8NHccBdTQtfPYPbnI1i5hMsU00GctJFW5rhNXJQ4
+
+curl -X GET "https://api.twitter.com/2/users/by?usernames=cnviolations,reuters,bbcworld \
+  -H "Authorization: AAAAAAAAAAAAAAAAAAAAAP3F2wEAAAAAPNnxg%2BkM9yKvujP7EvTvI7LhaYs%3DOQidUwRyYu8NHccBdTQtfPYPbnI1i5hMsU00GctJFW5rhNXJQ4"
+
+
+docker compose exec -T airflow-webserver python - <<'PY'
+from scraper.reuters import ReutersScraper
+scraper = ReutersScraper()
+raw = scraper.fetch()
+items = scraper.parse(raw)
+print(f"🔎 Reuters fetched {len(items)} items")
+for i, it in enumerate(items[:3], 1):
+    print(f"\n— Item {i} —")
+    print(it)
+PY
+
+
+docker compose exec -T airflow-webserver python - <<'PY'
+from scraper.twitter_source import TwitterScraper
+scraper = TwitterScraper()
+tweets = list(scraper.fetch_all())
+print(f"🔎 Twitter fetched {len(tweets)} tweets")
+for i, tw in enumerate(tweets[:3], 1):
+    print(f"\n— Tweet {i} —")
+    print(tw.as_dict())
+PY
+docker compose exec --user root airflow-webserver bash
+echo 'export HTTP_PROXY=http://host.docker.internal:1082'  >> /root/.bashrc
+echo 'export HTTPS_PROXY=http://host.docker.internal:1082' >> /root/.bashrc
+exit
+
+
+
+系统角色: 你是一名资深 Python 后端 + 数据工程师，擅长 Airflow、LLM API、向量数据库、文件 I/O。
+
+目标: 为中文时政自媒体构建一条“抓-分-选-写”自动选题流水线——  
+- **仅抓取过去 24 小时的新闻**  
+- **GPT 甄别 + 去重**：同一事件仅写一次，除非判定为“重大更新”  
+- **每天运行 4 次**（UTC+8 的 00:00、06:00、12:00、18:00），把符合要求的摘要写入本地 Markdown（按日期聚合）
+
+LANG=zh  # 改成 en 可切换英文
+====================== 需求详情（v3） ======================
+1. **数据采集 (抓)**
+   - 新闻源：NewsAPI、EventRegistry、Reuters RSS、X/Twitter 指定账号、微博热搜
+   - Airflow DAG `schedule_interval="0 */6 * * *"`，每次仅拉取 `now()-24h` 内的新文
+   - 统一字段 `id, title, body, published_at, source, url, lang, social_metrics`
+2. **初筛 + 去重 (分)**
+   - GPT-4o 函数调用：过滤非「政治/军事/科技/经济/文化」、>24h、无独家细节、对目标用户无用 的报文  
+   - **历史去重**  
+     1. 对 `title+url` 生成 SimHash → 80 % 相似即同事件  
+     2. 若数据库已有摘要，调用 GPT 询问 _“是否重大更新？（是/否 + 20 字理由）”_  
+        - 否 → 丢弃  
+        - 是 → 视为新摘要，写入并在 Markdown 卡片标注“【更新】”
+3. **量化打分 (判)**
+   - 公式 `score = 0.4*Hot + 0.4*Sim + 0.2*Fresh`  
+   - `Hot` = likes + retweets  
+   - `Sim` = 与"时政视频账号主题向量"余弦相似度（Faiss）  
+   - `Fresh` = e^(–Δt/24h)  
+   - `score > 0.6` 入池
+4. **摘要生成 (写)**
+   - GPT-4o Few-shot Prompt，输出 **JSON**：
+     ```json
+     {
+       "hashtags": ["#国家", "#议题"],   // 2-5 个#
+       "title": "≤8 字主标题",
+       "subtitle": "≤12 字副标题",
+       "summary": "① 事件…② 背景…③ 看点…", // ≤200 字
+       "date": "YYYY-MM-DD",
+       "source": "媒体 – URL",
+       "is_update": false           // GPT 判断的重大更新标记
+     }
+     ```
+5. **本地落盘 (输出)**
+   - 路径 `./summaries/YYYY-MM-DD.md`，每日单文件；若已存在则追加  
+   - Markdown 模板：
+     ```markdown
+     ## {title}｜{subtitle}{% if is_update %}【更新】{% endif %}
+     - **{hashtags}**
+     - ① … ② … ③ …
+     - *来源：{source}*
+     ```
+   - 编码 UTF-8，无 BOM
+6. **运行频次**  
+   - Airflow DAG `news_pipeline.py`：`0 */6 * * *`（北京时间 00/06/12/18 点触发）
+
+技术栈
+-------
+- **Python 3.11** （poetry 管理依赖）  
+- Airflow 2.9  
+- HTTP: httpx + tenacity 重试  
+- OpenAI SDK ≥1.30（函数调用）  
+- 向量库: faiss-cpu  
+- 判重: simhash + Redis Bloom  
+- ORM: SQLModel + SQLite（本地，可替换 Postgres）  
+- 单元测试: pytest + GitHub Actions CI  
+
+交付物
+------
+1. **目录结构**
+
+```
