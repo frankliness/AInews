@@ -34,11 +34,13 @@ def minmax(s: Union[List[float], np.ndarray]) -> np.ndarray:
     min_val = s.min()
     max_val = s.max()
     
-    # 如果所有值都相同，返回全1数组
+    # 检查分母是否为零
     if max_val == min_val:
-        return np.ones_like(s)
+        # 如果所有值都一样，我们无法区分它们，因此返回一个中立的分数0.5
+        # 或者，如果这个序列只有一个值，它本身就应该得到满分1.0或中性分0.5，具体取决于业务逻辑。我们暂时选择0.5。
+        return np.full_like(s, 0.5)
     
-    return (s - min_val) / (max_val - min_val + 1e-9)
+    return (s - min_val) / (max_val - min_val)
 
 def parse_embedding(embedding_str: str) -> List[float]:
     """

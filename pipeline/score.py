@@ -18,6 +18,13 @@ sys.path.append(str(BASE_DIR))
 
 from utils.text import minmax
 
+# 导入Airflow Variable用于功能开关
+try:
+    from airflow.models import Variable
+except ImportError:
+    # 本地测试时可能没有airflow
+    Variable = None
+
 log = logging.getLogger(__name__)
 
 class NewsScorer:
@@ -60,8 +67,29 @@ class NewsScorer:
         """
         log.info("🚀 开始新闻打分...")
         
+        # --- 功能开关读取逻辑 ---
+        try:
+            # 从Airflow获取当前的生产版本，如果变量不存在，安全地默认为 'legacy' (旧版)
+            pipeline_version = Variable.get("PIPELINE_VERSION", default_var="legacy")
+        except Exception:
+            # 这是一个安全保障：当在非Airflow环境（如本地直接运行脚本）中测试时，
+            # Variable会不可用，此时我们同样安全地默认到 'legacy'。
+            log.warning("Could not get PIPELINE_VERSION from Airflow Variables. Defaulting to 'legacy' for local testing.")
+            pipeline_version = "legacy"
+        
+        # 根据读取到的版本，动态地、程序化地设置源表的全名 (包含schema) 和分数-列
+        if pipeline_version == 'phoenix':
+            source_table = 'phoenix_shadow.raw_events'
+            score_column = 'final_score_v2'  # V2系统使用的新分数-列
+            log.info(f"SWITCH ENGAGED: Reading from V2 Phoenix pipeline data source (Table: {source_table})")
+        else:
+            source_table = 'public.raw_events'
+            score_column = 'score'             # V1系统使用的旧分数-列
+            log.info(f"SWITCH NORMAL: Reading from V1 Legacy pipeline data source (Table: {source_table})")
+        # --- 功能开关逻辑结束 ---
+        
         # 1. 获取24小时内的数据
-        df = self._fetch_recent_data()
+        df = self._fetch_recent_data(source_table)
         if df.empty:
             log.warning("没有找到24小时内的数据")
             return {"total_records": 0, "scored_records": 0}
@@ -72,18 +100,18 @@ class NewsScorer:
         df = self._calculate_scores(df)
         
         # 3. 更新数据库
-        stats = self._update_database(df)
+        stats = self._update_database(df, source_table, score_column)
         
         log.info(f"✅ 打分完成: {stats}")
         return stats
     
-    def _fetch_recent_data(self) -> pd.DataFrame:
+    def _fetch_recent_data(self, source_table: str) -> pd.DataFrame:
         """获取24小时内的数据"""
-        query = """
+        query = f"""
             SELECT id, title, body, published_at, url, likes, retweets,
                    total_articles_24h, source_importance, wgt, centroid_sim,
                    sentiment, topic_id, cluster_size
-            FROM raw_events
+            FROM {source_table}
             WHERE published_at >= NOW() - INTERVAL '24 HOURS'
         """
         
@@ -172,7 +200,7 @@ class NewsScorer:
         log.info(f"🏆 综合分数计算完成，范围: {df['score'].min():.3f} - {df['score'].max():.3f}")
         return df
     
-    def _update_database(self, df: pd.DataFrame) -> Dict[str, int]:
+    def _update_database(self, df: pd.DataFrame, source_table: str, score_column: str) -> Dict[str, int]:
         """更新数据库"""
         log.info("💾 更新数据库...")
         
@@ -184,13 +212,13 @@ class NewsScorer:
         
         # 执行更新
         with self.engine.begin() as conn:
-            result = conn.execute(text("""
-                UPDATE raw_events r
+            result = conn.execute(text(f"""
+                UPDATE {source_table} r
                 SET hot_raw    = t.hot_raw,
                     hot_norm   = t.hot_norm,
                     rep_norm   = t.rep_norm,
                     sent_norm  = t.sent_norm,
-                    score      = t.score
+                    {score_column} = t.score
                 FROM tmp_score t 
                 WHERE r.id = t.id
             """))

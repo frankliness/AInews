@@ -1,0 +1,79 @@
+# Phoenix V2 专用 docker-compose 配置
+# 用于启动独立的影子系统，与生产环境完全隔离
+
+version: "3.9"
+
+services:
+  airflow-phoenix-webserver:
+    image: ainews:phoenix
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - HTTP_PROXY=http://host.docker.internal:1082
+      - HTTPS_PROXY=http://host.docker.internal:1082
+      - http_proxy=http://host.docker.internal:1082
+      - https_proxy=http://host.docker.internal:1082
+      - TW_BEARER_TOKEN=${TW_BEARER_TOKEN}
+      - TWITTER_USERS=${TWITTER_USERS}
+      - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
+    ports:
+      - "8082:8080"  # 避免与生产环境端口冲突
+    volumes:
+      - ./dags/phoenix:/opt/airflow/dags  # 只挂载Phoenix专用DAG
+      - ./scraper:/opt/airflow/scraper
+      - ./utils:/opt/airflow/utils
+      - ./exports:/opt/airflow/exports
+      - ./logs:/opt/airflow/logs
+      - phoenix_plugins:/opt/airflow/plugins
+    command: webserver
+    networks:
+      - backend
+
+  airflow-phoenix-scheduler:
+    image: ainews:phoenix
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - airflow-phoenix-webserver
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - HTTP_PROXY=http://host.docker.internal:1082
+      - HTTPS_PROXY=http://host.docker.internal:1082
+      - http_proxy=http://host.docker.internal:1082
+      - https_proxy=http://host.docker.internal:1082
+      - TW_BEARER_TOKEN=${TW_BEARER_TOKEN}
+      - TWITTER_USERS=${TWITTER_USERS}
+      - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
+    volumes:
+      - ./dags/phoenix:/opt/airflow/dags  # 只挂载Phoenix专用DAG
+      - ./scraper:/opt/airflow/scraper
+      - ./utils:/opt/airflow/utils
+      - ./exports:/opt/airflow/exports
+      - ./logs:/opt/airflow/logs
+      - phoenix_plugins:/opt/airflow/plugins
+    command: scheduler
+    networks:
+      - backend
+
+volumes:
+  phoenix_plugins:
+
+networks:
+  backend:
+    driver: bridge 

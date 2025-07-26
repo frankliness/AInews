@@ -61,8 +61,8 @@ def _extract_event_info(article: Dict) -> Dict[str, Any]:
     if "embedding" in article:
         embedding = json.dumps(article["embedding"])
     
-    # 提取24小时文章数
-    total_articles_24h = article.get("totalArticles24h", 0)
+    # 提取事件文章总数
+    total_articles_24h = article.get("totalArticleCount", 0)
     
     # 提取源重要性
     source_importance = article.get("sourceImportance", 1)
