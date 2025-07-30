@@ -1,8 +1,5 @@
 -- Phoenix V2 专用表结构
--- 在 phoenix_shadow schema 下创建表
-
--- 设置搜索路径
-SET search_path TO phoenix_shadow;
+-- 在独立数据库实例中创建表
 
 -- 创建原始事件表
 CREATE TABLE IF NOT EXISTS raw_events (
@@ -66,5 +63,4 @@ CREATE TABLE IF NOT EXISTS data_quality_metrics (
 -- 创建唯一约束
 CREATE UNIQUE INDEX IF NOT EXISTS idx_phoenix_data_quality_metrics_date ON data_quality_metrics(metric_date);
 
--- 重置搜索路径
-SET search_path TO public; 
+ 

@@ -1,104 +1,120 @@
-"""
-Phoenix V2 新闻抓取客户端
-使用 eventregistry 库实现事件优先的数据抓取策略
-"""
+# 文件路径: scraper/newsapi_client.py (最终版)
+
 import logging
-from datetime import datetime
-from typing import List, Dict, Any
-import eventregistry as er
+from datetime import datetime, timedelta
+from eventregistry import (
+    EventRegistry,
+    QueryEventsIter,
+    QueryEvent,
+    RequestEventArticles,
+    ReturnInfo,
+    ArticleInfoFlags,
+    EventInfoFlags,
+    RequestEventsInfo,
+    QueryItems
+)
 
 log = logging.getLogger(__name__)
 
-class NewsAPIClient:
-    """基于 eventregistry 的新一代新闻API客户端"""
-    
+class NewsApiClient:
     def __init__(self, api_key: str):
-        """
-        初始化客户端
-        
-        Args:
-            api_key: EventRegistry API密钥
-        """
-        self.api_key = api_key
-        self.event_registry = er.EventRegistry(apiKey=api_key)
-        log.info("✅ NewsAPIClient 初始化完成")
-    
-    def fetch_trending_events_uris(self, category_uris: List[str], date_start: datetime) -> List[str]:
-        """
-        获取热门事件的URI列表
-        
-        Args:
-            category_uris: 分类URI列表
-            date_start: 开始日期
-            
-        Returns:
-            List[str]: 事件URI列表
-        """
+        if not api_key:
+            raise ValueError("API key cannot be empty.")
+        self.er = EventRegistry(apiKey=api_key, allowUseOfArchive=False)
+        self.source_uri_cache = {}
+        log.info("NewsApiClient initialized successfully.")
+
+    def get_source_uri(self, source_name: str):
+        if source_name in self.source_uri_cache:
+            return self.source_uri_cache[source_name]
         try:
-            # 创建事件查询
-            query = er.QueryEventsIter(
-                categoryUri=category_uris,
-                dateStart=date_start,
-                minArticlesInEvent=5  # 硬编码设置最小文章数
+            uri = self.er.getSourceUri(source_name)
+            if uri:
+                self.source_uri_cache[source_name] = uri
+                log.info(f"Translated source '{source_name}' to URI '{uri}'.")
+            else:
+                log.warning(f"Could not find URI for source '{source_name}'.")
+            return uri
+        except Exception as e:
+            log.error(f"Error fetching URI for source '{source_name}': {e}")
+            return None
+
+    def get_uris_for_sources(self, source_names: list):
+        return [uri for name in source_names if (uri := self.get_source_uri(name)) is not None]
+
+    def fetch_trending_events(self, source_names: list, max_events: int, use_whitelist: bool = True):
+        """获取热门事件，并根据开关决定是否启用信源白名单过滤。"""
+        log.info(f"Fetching up to {max_events} trending events...")
+
+        # 【核心修复】: 将所有参数“平铺”开来，作为独立的关键字参数传递
+        # 我们不再使用 requestedResult 参数
+        # 【核心修复】: 构造一个完全符合SDK三层嵌套结构的"参数套娃"
+        # 第一层：创建唯一有效的"主订单" -> RequestEventsInfo
+        requested_result = RequestEventsInfo(
+            # 第二层：在"主订单"中，填入我们的"备注" -> ReturnInfo
+            returnInfo=ReturnInfo(
+                # 第三层：在"备注"中，勾选我们需要的"选项" -> EventInfoFlags
+                eventInfo=EventInfoFlags(
+                    totalArticleCount=True,
+                    socialScore=True
+                )
             )
-            
-            # 执行查询 (测试模式：只获取10个事件)
-            events = list(query.execQuery(self.event_registry, maxItems=10))
-            
-            # 提取事件URI
-            event_uris = [event.get("uri") for event in events if event.get("uri")]
-            
-            log.info(f"📊 获取到 {len(event_uris)} 个热门事件")
-            return event_uris
-            
-        except Exception as e:
-            log.error(f"❌ 获取热门事件失败: {e}")
-            return []
-    
-    def fetch_rich_articles_for_event(self, event_uri: str) -> List[Dict[str, Any]]:
-        """
-        获取事件相关的丰富文章数据
-        
-        Args:
-            event_uri: 事件URI
-            
-        Returns:
-            List[Dict[str, Any]]: 文章详情列表
-        """
-        try:
-            # 创建文章查询
-            query = er.QueryEventArticlesIter(eventUri=event_uri)
-            
-            # 执行查询 (测试模式：每个事件只获取10篇文章)
-            articles = list(query.execQuery(self.event_registry, maxItems=10))
-            
-            # 转换数据格式
-            rich_articles = []
-            for article in articles:
-                # 获取来源信息
-                source_info = article.get("source", {})
-                source_name = source_info.get("title", "") if source_info else ""
-                
-                article_data = {
-                    "title": article.get("title", ""),
-                    "body": article.get("body", ""),
-                    "url": article.get("url", ""),
-                    "published_at": article.get("dateTimePub"),
-                    "sentiment": article.get("sentiment", 0.0),
-                    "relevance": article.get("relevance", 1.0),
-                    "weight": article.get("wgt", 1.0),
-                    "event_uri": event_uri,
-                    "source_name": source_name,
-                    "source_importance": 1,  # 默认值
-                    "concepts": [],  # 暂时为空
-                    "total_articles_24h": 0,  # 暂时为0
-                    "embedding": None  # 暂时为None
-                }
-                rich_articles.append(article_data)
-            
-            log.info(f"📰 事件 {event_uri} 获取到 {len(rich_articles)} 篇文章")
-            return rich_articles
-            
-        except Exception as e:
-            log.error(f"❌ 获取事件文章失败 {event_uri}: {e}")
-            return [] 
+        )
+
+        # 准备基础查询参数，这次我们将正确的"参数套娃"放入'requestedResult'
+        query_params = {
+            "lang": 'eng',
+            "dateStart": datetime.utcnow() - timedelta(hours=24),
+            "minArticlesInEvent": 3,
+            "requestedResult": requested_result
+        }
+
+        if use_whitelist:
+            log.info(f"Source whitelist is ENABLED. Filtering by {len(source_names)} trusted sources...")
+            source_uris = self.get_uris_for_sources(source_names)
+            if not source_uris:
+                log.error("No valid source URIs found for the whitelist. Aborting fetch.")
+                return []
+            # 【核心修复 2】: 根据SDK的警告，使用QueryItems.OR()来明确构造多信源查询
+            query_params['sourceUri'] = QueryItems.OR(source_uris)
+        else:
+            log.info("Source whitelist is DISABLED. Fetching from all sources.")
+
+        # 将构造好的参数字典解包，传入构造函数
+        q = QueryEventsIter(**query_params)
+
+        events = list(q.execQuery(self.er, sortBy="size", maxItems=max_events))
+        log.info(f"Fetched {len(events)} events.")
+        return events
+
+    def fetch_rich_articles_for_event(self, event_uri: str, articles_count: int):
+        """获取一个指定事件URI下的、最丰富的文章详情列表。"""
+        log.info(f"Fetching up to {articles_count} rich articles for event: {event_uri}")
+
+        # 1. 构造"订单详情"：我们想要什么？
+        requested_articles_details = RequestEventArticles(
+            count=articles_count,
+            sortBy="date",
+            returnInfo=ReturnInfo(
+                articleInfo=ArticleInfoFlags(
+                    sourceInfo=True, concepts=True, sentiment=True, body=True,
+                    title=True, url=True, dateTimePub=True
+                )
+            )
+        )
+
+        # 2. 【核心修复】构造"主订单"，并用.setRequestedResult()方法来附加"订单详情"
+        q = QueryEvent(event_uri)
+        q.setRequestedResult(requested_articles_details)
+
+        # 3. 执行查询：只传入一个查询对象
+        result = self.er.execQuery(q)
+
+        # 4. 正确地从返回的嵌套结构中提取文章列表
+        if event_uri in result and 'articles' in result[event_uri]:
+             articles = result[event_uri]['articles']['results']
+             log.info(f"✅ Fetched {len(articles)} articles for event {event_uri}")
+             return articles
+        else:
+             log.warning(f"No articles found for event {event_uri}")
+             return []

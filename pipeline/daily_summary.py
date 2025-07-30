@@ -10,13 +10,6 @@ from datetime import datetime, timedelta
 import os
 import json
 
-# 导入Airflow Variable用于功能开关
-try:
-    from airflow.models import Variable
-except ImportError:
-    # 本地测试时可能没有airflow
-    Variable = None
-
 log = logging.getLogger(__name__)
 
 class DailySummaryGenerator:
@@ -43,29 +36,8 @@ class DailySummaryGenerator:
         """
         log.info("🚀 开始生成每日新闻汇总...")
         
-        # --- 功能开关读取逻辑 ---
-        try:
-            # 从Airflow获取当前的生产版本，如果变量不存在，安全地默认为 'legacy' (旧版)
-            pipeline_version = Variable.get("PIPELINE_VERSION", default_var="legacy")
-        except Exception:
-            # 这是一个安全保障：当在非Airflow环境（如本地直接运行脚本）中测试时，
-            # Variable会不可用，此时我们同样安全地默认到 'legacy'。
-            log.warning("Could not get PIPELINE_VERSION from Airflow Variables. Defaulting to 'legacy' for local testing.")
-            pipeline_version = "legacy"
-        
-        # 根据读取到的版本，动态地、程序化地设置源表的全名 (包含schema) 和分数-列
-        if pipeline_version == 'phoenix':
-            source_table = 'phoenix_shadow.raw_events'
-            score_column = 'final_score_v2'  # V2系统使用的新分数-列
-            log.info(f"SWITCH ENGAGED: Reading from V2 Phoenix pipeline data source (Table: {source_table})")
-        else:
-            source_table = 'public.raw_events'
-            score_column = 'score'             # V1系统使用的旧分数-列
-            log.info(f"SWITCH NORMAL: Reading from V1 Legacy pipeline data source (Table: {source_table})")
-        # --- 功能开关逻辑结束 ---
-        
         # 1. 获取去同质化处理后的数据
-        df = self._fetch_deduped_data(source_table, score_column)
+        df = self._fetch_deduped_data()
         if df.empty:
             log.warning("没有找到去同质化处理后的数据")
             return {"total_records": 0, "summary_topics": 0}
@@ -81,18 +53,18 @@ class DailySummaryGenerator:
         log.info(f"✅ 汇总完成: {stats}")
         return stats
     
-    def _fetch_deduped_data(self, source_table: str, score_column: str) -> pd.DataFrame:
+    def _fetch_deduped_data(self) -> pd.DataFrame:
         """获取去同质化处理后的数据"""
-        query = f"""
+        query = """
             SELECT 
                 id, title, body, url, source, published_at,
-                topic_id, cluster_size, centroid_sim, {score_column} as score,
+                topic_id, cluster_size, centroid_sim, score,
                 event_id, sentiment
-            FROM {source_table}
+            FROM raw_events
             WHERE published_at >= NOW() - INTERVAL '24 HOURS'
               AND topic_id IS NOT NULL
-              AND {score_column} IS NOT NULL
-            ORDER BY topic_id, {score_column} DESC, centroid_sim DESC
+              AND score IS NOT NULL
+            ORDER BY topic_id, score DESC, centroid_sim DESC
         """
         
         try:

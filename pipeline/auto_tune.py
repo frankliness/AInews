@@ -20,13 +20,6 @@ sys.path.append(str(BASE_DIR))
 
 log = logging.getLogger(__name__)
 
-# 导入Airflow Variable用于功能开关
-try:
-    from airflow.models import Variable
-except ImportError:
-    # 本地测试时可能没有airflow
-    Variable = None
-
 class AutoTuner:
     """自动调参器"""
     
@@ -51,29 +44,8 @@ class AutoTuner:
         """
         log.info("🚀 开始自动调参...")
         
-        # --- 功能开关读取逻辑 ---
-        try:
-            # 从Airflow获取当前的生产版本，如果变量不存在，安全地默认为 'legacy' (旧版)
-            pipeline_version = Variable.get("PIPELINE_VERSION", default_var="legacy")
-        except Exception:
-            # 这是一个安全保障：当在非Airflow环境（如本地直接运行脚本）中测试时，
-            # Variable会不可用，此时我们同样安全地默认到 'legacy'。
-            log.warning("Could not get PIPELINE_VERSION from Airflow Variables. Defaulting to 'legacy' for local testing.")
-            pipeline_version = "legacy"
-        
-        # 根据读取到的版本，动态地、程序化地设置源表的全名 (包含schema) 和分数-列
-        if pipeline_version == 'phoenix':
-            source_table = 'phoenix_shadow.raw_events'
-            score_column = 'final_score_v2'  # V2系统使用的新分数-列
-            log.info(f"SWITCH ENGAGED: Reading from V2 Phoenix pipeline data source (Table: {source_table})")
-        else:
-            source_table = 'public.raw_events'
-            score_column = 'score'             # V1系统使用的旧分数-列
-            log.info(f"SWITCH NORMAL: Reading from V1 Legacy pipeline data source (Table: {source_table})")
-        # --- 功能开关逻辑结束 ---
-        
         # 1. 获取历史数据
-        df = self._fetch_historical_data(source_table, score_column)
+        df = self._fetch_historical_data()
         if df.empty:
             log.warning("没有找到足够的历史数据")
             return {"status": "no_data"}
@@ -95,18 +67,18 @@ class AutoTuner:
         log.info(f"✅ 自动调参完成: {stats}")
         return stats
     
-    def _fetch_historical_data(self, source_table: str, score_column: str) -> pd.DataFrame:
+    def _fetch_historical_data(self) -> pd.DataFrame:
         """获取过去7天的历史数据"""
-        query = f"""
+        query = """
             SELECT r.id, r.title, r.body, r.published_at, r.url,
                    r.total_articles_24h, r.source_importance, r.wgt,
                    r.likes, r.retweets, r.centroid_sim, r.sentiment,
-                   r.{score_column} as score, r.topic_id, r.cluster_size,
+                   r.score, r.topic_id, r.cluster_size,
                    CASE WHEN d.id IS NOT NULL THEN 1 ELSE 0 END as selected
-            FROM {source_table} r
+            FROM raw_events r
             LEFT JOIN daily_cards d ON r.id = d.raw_id
             WHERE r.published_at >= NOW() - INTERVAL '7 DAYS'
-              AND r.{score_column} IS NOT NULL
+              AND r.score IS NOT NULL
         """
         
         try:

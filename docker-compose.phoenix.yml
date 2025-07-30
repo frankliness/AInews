@@ -1,79 +1,134 @@
-# Phoenix V2 专用 docker-compose 配置
-# 用于启动独立的影子系统，与生产环境完全隔离
+# Phoenix News Pipeline V2 - 精英数据动脉
+# 专用的 Docker Compose 配置
 
 version: "3.9"
 
 services:
-  airflow-phoenix-webserver:
-    image: ainews:phoenix
+  # PostgreSQL 数据库
+  postgres-phoenix:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=phoenix_user
+      - POSTGRES_PASSWORD=phoenix_pass
+      - POSTGRES_DB=phoenix_db
+      - TZ=Asia/Shanghai
+      - PGTZ=Asia/Shanghai
+    volumes:
+      - phoenix_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"  # 使用不同端口避免冲突
+    networks:
+      - phoenix_network
+
+  # pgAdmin for Phoenix
+  pgadmin-phoenix:
+    image: dpage/pgadmin4:8.6
     restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
-    env_file:
-      - .env
+      - postgres-phoenix
     environment:
+      - PGADMIN_DEFAULT_EMAIL=phoenix@example.com
+      - PGADMIN_DEFAULT_PASSWORD=phoenix123
+    ports:
+      - "5051:80"  # 使用端口 5051 避免冲突
+    volumes:
+      - phoenix_pgadmin_data:/var/lib/pgadmin
+    networks:
+      - phoenix_network
+
+  # Redis 缓存
+  redis-phoenix:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6381:6379"  # 使用不同端口避免冲突
+    networks:
+      - phoenix_network
+
+  # Phoenix Airflow 初始化
+  phoenix-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.phoenix
+    restart: "no"
+    depends_on:
+      - postgres-phoenix
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - HTTP_PROXY=http://host.docker.internal:1082
-      - HTTPS_PROXY=http://host.docker.internal:1082
-      - http_proxy=http://host.docker.internal:1082
-      - https_proxy=http://host.docker.internal:1082
-      - TW_BEARER_TOKEN=${TW_BEARER_TOKEN}
-      - TWITTER_USERS=${TWITTER_USERS}
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
+      - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
+    command:
+      - bash
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username "phoenix_admin" \
+          --firstname "Phoenix" \
+          --lastname "Admin" \
+          --role "Admin" \
+          --email "phoenix@example.com" \
+          --password "phoenix123"
+    networks:
+      - phoenix_network
+
+  # Phoenix Airflow Web 服务器
+  phoenix-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.phoenix
+    restart: unless-stopped
+    depends_on:
+      - phoenix-init
+      - postgres-phoenix
+      - redis-phoenix
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
     ports:
-      - "8082:8080"  # 避免与生产环境端口冲突
+      - "8082:8080"  # 使用端口 8082 避免冲突
     volumes:
-      - ./dags/phoenix:/opt/airflow/dags  # 只挂载Phoenix专用DAG
-      - ./scraper:/opt/airflow/scraper
-      - ./utils:/opt/airflow/utils
-      - ./exports:/opt/airflow/exports
-      - ./logs:/opt/airflow/logs
-      - phoenix_plugins:/opt/airflow/plugins
-    command: webserver
+      - ./dags/phoenix:/opt/airflow/dags  # 只挂载 Phoenix 专用 DAG
+      - phoenix_logs:/opt/airflow/logs
+      - ../exports:/opt/airflow/exports
     networks:
-      - backend
+      - phoenix_network
 
-  airflow-phoenix-scheduler:
-    image: ainews:phoenix
+  # Phoenix Airflow 调度器
+  phoenix-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.phoenix
     restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
-      - airflow-phoenix-webserver
-    env_file:
-      - .env
+      - phoenix-init
+      - postgres-phoenix
+      - redis-phoenix
     environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - HTTP_PROXY=http://host.docker.internal:1082
-      - HTTPS_PROXY=http://host.docker.internal:1082
-      - http_proxy=http://host.docker.internal:1082
-      - https_proxy=http://host.docker.internal:1082
-      - TW_BEARER_TOKEN=${TW_BEARER_TOKEN}
-      - TWITTER_USERS=${TWITTER_USERS}
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
     volumes:
-      - ./dags/phoenix:/opt/airflow/dags  # 只挂载Phoenix专用DAG
-      - ./scraper:/opt/airflow/scraper
-      - ./utils:/opt/airflow/utils
-      - ./exports:/opt/airflow/exports
-      - ./logs:/opt/airflow/logs
-      - phoenix_plugins:/opt/airflow/plugins
-    command: scheduler
+      - ./dags/phoenix:/opt/airflow/dags  # 只挂载 Phoenix 专用 DAG
+      - phoenix_logs:/opt/airflow/logs
+      - ../exports:/opt/airflow/exports
+    command: ["airflow", "scheduler"]
     networks:
-      - backend
+      - phoenix_network
 
 volumes:
-  phoenix_plugins:
+  phoenix_postgres_data:
+  phoenix_pgadmin_data:
+  phoenix_logs:
 
 networks:
-  backend:
-    driver: bridge 
+  phoenix_network:
+    driver: bridge

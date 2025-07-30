@@ -175,3 +175,10 @@ LANG=zh  # 改成 en 可切换英文
 1. **目录结构**
 
 ```
+现在您可以通过pgAdmin连接V2数据库：
+连接参数：
+主机: host.docker.internal
+端口: 5434
+数据库: ainews
+用户名: airflow
+密码: airflow_pass

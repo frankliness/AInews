@@ -1,0 +1,533 @@
+{
+  "uri": "eng-10726381",
+  "concepts": [
+    {
+      "uri": "http://en.wikipedia.org/wiki/Iran",
+      "type": "loc",
+      "score": 100,
+      "label": {
+        "eng": "Iran"
+      },
+      "location": {
+        "type": "country",
+        "label": {
+          "eng": "Iran"
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Donald_Trump",
+      "type": "person",
+      "score": 91,
+      "label": {
+        "eng": "Donald Trump"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Nuclear_program_of_Iran",
+      "type": "wiki",
+      "score": 80,
+      "label": {
+        "eng": "Nuclear program of Iran"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Israel",
+      "type": "loc",
+      "score": 61,
+      "label": {
+        "eng": "Israel"
+      },
+      "location": {
+        "type": "country",
+        "label": {
+          "eng": "Israel"
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Enriched_uranium",
+      "type": "wiki",
+      "score": 42,
+      "label": {
+        "eng": "Enriched uranium"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/United_States",
+      "type": "loc",
+      "score": 40,
+      "label": {
+        "eng": "United States"
+      },
+      "location": {
+        "type": "country",
+        "label": {
+          "eng": "United States"
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Nuclear_weapon",
+      "type": "wiki",
+      "score": 38,
+      "label": {
+        "eng": "Nuclear weapon"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Tehran",
+      "type": "loc",
+      "score": 36,
+      "label": {
+        "eng": "Tehran"
+      },
+      "location": {
+        "type": "place",
+        "label": {
+          "eng": "Tehran"
+        },
+        "country": {
+          "type": "country",
+          "label": {
+            "eng": "Iran"
+          }
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Defense_Intelligence_Agency",
+      "type": "wiki",
+      "score": 32,
+      "label": {
+        "eng": "Defense Intelligence Agency"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/United_States_Intelligence_Community",
+      "type": "wiki",
+      "score": 31,
+      "label": {
+        "eng": "United States Intelligence Community"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Ceasefire",
+      "type": "wiki",
+      "score": 30,
+      "label": {
+        "eng": "Ceasefire"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/CNN",
+      "type": "org",
+      "score": 29,
+      "label": {
+        "eng": "CNN"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/White_House",
+      "type": "wiki",
+      "score": 23,
+      "label": {
+        "eng": "White House"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/International_Atomic_Energy_Agency",
+      "type": "wiki",
+      "score": 22,
+      "label": {
+        "eng": "International Atomic Energy Agency"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Natanz",
+      "type": "loc",
+      "score": 20,
+      "label": {
+        "eng": "Natanz"
+      },
+      "location": {
+        "type": "place",
+        "label": {
+          "eng": "Natanz"
+        },
+        "country": {
+          "type": "country",
+          "label": {
+            "eng": "Iran"
+          }
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/The_Pentagon",
+      "type": "wiki",
+      "score": 19,
+      "label": {
+        "eng": "The Pentagon"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Fordo",
+      "type": "loc",
+      "score": 18,
+      "label": {
+        "eng": "Fordo"
+      },
+      "location": null
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Isfahan",
+      "type": "loc",
+      "score": 18,
+      "label": {
+        "eng": "Isfahan"
+      },
+      "location": {
+        "type": "place",
+        "label": {
+          "eng": "Isfahan"
+        },
+        "country": {
+          "type": "country",
+          "label": {
+            "eng": "Iran"
+          }
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Strike_action",
+      "type": "wiki",
+      "score": 17,
+      "label": {
+        "eng": "Strike action"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Airstrike",
+      "type": "wiki",
+      "score": 17,
+      "label": {
+        "eng": "Airstrike"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/United_States_Secretary_of_Defense",
+      "type": "wiki",
+      "score": 16,
+      "label": {
+        "eng": "United States Secretary of Defense"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Bunker_buster",
+      "type": "wiki",
+      "score": 14,
+      "label": {
+        "eng": "Bunker buster"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Benjamin_Netanyahu",
+      "type": "person",
+      "score": 14,
+      "label": {
+        "eng": "Benjamin Netanyahu"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Middle_East",
+      "type": "loc",
+      "score": 14,
+      "label": {
+        "eng": "Middle East"
+      },
+      "location": null
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/NATO_summit",
+      "type": "wiki",
+      "score": 13,
+      "label": {
+        "eng": "NATO summit"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/United_Nations",
+      "type": "org",
+      "score": 13,
+      "label": {
+        "eng": "United Nations"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Washington,_D.C.",
+      "type": "loc",
+      "score": 13,
+      "label": {
+        "eng": "Washington, D.C."
+      },
+      "location": {
+        "type": "place",
+        "label": {
+          "eng": "Washington, D.C."
+        },
+        "country": {
+          "type": "country",
+          "label": {
+            "eng": "United States"
+          }
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Uranium",
+      "type": "wiki",
+      "score": 12,
+      "label": {
+        "eng": "Uranium"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/The_Hague",
+      "type": "loc",
+      "score": 12,
+      "label": {
+        "eng": "The Hague"
+      },
+      "location": null
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Centrifuge",
+      "type": "wiki",
+      "score": 11,
+      "label": {
+        "eng": "Centrifuge"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Northrop_Grumman_B-2_Spirit",
+      "type": "wiki",
+      "score": 11,
+      "label": {
+        "eng": "Northrop Grumman B-2 Spirit"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/The_New_York_Times",
+      "type": "wiki",
+      "score": 11,
+      "label": {
+        "eng": "The New York Times"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/NATO",
+      "type": "org",
+      "score": 11,
+      "label": {
+        "eng": "NATO"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Prime_Minister_of_Israel",
+      "type": "wiki",
+      "score": 10,
+      "label": {
+        "eng": "Prime Minister of Israel"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/White_House_Press_Secretary",
+      "type": "wiki",
+      "score": 10,
+      "label": {
+        "eng": "White House Press Secretary"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Netherlands",
+      "type": "loc",
+      "score": 10,
+      "label": {
+        "eng": "Netherlands"
+      },
+      "location": {
+        "type": "country",
+        "label": {
+          "eng": "Netherlands"
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Fox_News",
+      "type": "org",
+      "score": 9,
+      "label": {
+        "eng": "Fox News"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Classified_information",
+      "type": "loc",
+      "score": 9,
+      "label": {
+        "eng": "Classified information"
+      },
+      "location": null
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/John_Ratcliffe_(American_politician)",
+      "type": "person",
+      "score": 8,
+      "label": {
+        "eng": "John Ratcliffe (American politician)"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Ali_Khamenei",
+      "type": "person",
+      "score": 8,
+      "label": {
+        "eng": "Ali Khamenei"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Pete_Hegseth",
+      "type": "person",
+      "score": 7,
+      "label": {
+        "eng": "Pete Hegseth"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Rafael_Grossi",
+      "type": "person",
+      "score": 6,
+      "label": {
+        "eng": "Rafael Grossi"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Mohammad_Bagher_Ghalibaf",
+      "type": "person",
+      "score": 6,
+      "label": {
+        "eng": "Mohammad Bagher Ghalibaf"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Tulsi_Gabbard",
+      "type": "person",
+      "score": 6,
+      "label": {
+        "eng": "Tulsi Gabbard"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Director_of_National_Intelligence",
+      "type": "person",
+      "score": 6,
+      "label": {
+        "eng": "Director of National Intelligence"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Marco_Rubio",
+      "type": "person",
+      "score": 6,
+      "label": {
+        "eng": "Marco Rubio"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Al_Jazeera",
+      "type": "org",
+      "score": 5,
+      "label": {
+        "eng": "Al Jazeera"
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/Russia",
+      "type": "loc",
+      "score": 5,
+      "label": {
+        "eng": "Russia"
+      },
+      "location": {
+        "type": "country",
+        "label": {
+          "eng": "Russia"
+        }
+      }
+    },
+    {
+      "uri": "http://en.wikipedia.org/wiki/China",
+      "type": "loc",
+      "score": 5,
+      "label": {
+        "eng": "China"
+      },
+      "location": {
+        "type": "country",
+        "label": {
+          "eng": "China"
+        }
+      }
+    }
+  ],
+  "eventDate": "2025-06-24",
+  "totalArticleCount": 538,
+  "title": {
+    "eng": "CIA director says Iran's nuclear facilities 'destroyed'"
+  },
+  "summary": {
+    "eng": "The boss of the US spy agency has said recent US strikes on Iran's nuclear infrastructure caused long-term damage, a day after a leaked report claimed they had had limited impact.\n\nCIA Director John Ratcliffe said the agency had obtained \"a body of credible evidence\" showing that key Iranian nuclear facilities were \"destroyed\" in the strikes and would need to be rebuilt \"over the course of years.\" It was not clear whether Ratcliffe was offering an official agency assessment or his view of the int"
+  },
+  "location": {
+    "type": "place",
+    "label": {
+      "eng": "Tehran"
+    },
+    "country": {
+      "type": "country",
+      "label": {
+        "eng": "Iran"
+      }
+    }
+  },
+  "categories": [
+    {
+      "uri": "dmoz/Society/Issues/Warfare_and_Conflict",
+      "label": "dmoz/Society/Issues/Warfare and Conflict",
+      "wgt": 17
+    },
+    {
+      "uri": "dmoz/Science/Physics/Nuclear",
+      "label": "dmoz/Science/Physics/Nuclear",
+      "wgt": 20
+    },
+    {
+      "uri": "dmoz/Health/Pharmacy/Nuclear_Pharmacy",
+      "label": "dmoz/Health/Pharmacy/Nuclear Pharmacy",
+      "wgt": 19
+    },
+    {
+      "uri": "news/Politics",
+      "label": "news/Politics",
+      "wgt": 99
+    }
+  ],
+  "articleCounts": {
+    "eng": 538
+  },
+  "sentiment": -0.1058823529411764,
+  "wgt": 70,
+  "relevance": 70
+}
