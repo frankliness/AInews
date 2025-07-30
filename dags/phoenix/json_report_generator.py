@@ -30,17 +30,28 @@ def generate_summary_report_to_json_file(**context):
         'options': '-c timezone=Asia/Shanghai'  # 设置连接时区
     }
     
-    # 1. 【核心修复】: 实现"北京时间6AM"规则的SQL查询
+    # 1. 【核心修复】: 实现"北京时间6AM"规则的SQL查询 + 事件去重
     # 逻辑: 数据库中的published_at已经是北京时间，直接减去6小时，
     # 然后取其日期部分与DAG的逻辑运行日期进行比较。
+    # 新增: 使用CTE和窗口函数，确保每个event_uri最多2篇文章
     sql = f"""
-    SELECT final_score_v2, title, body, source_name, url, event_uri, published_at
-    FROM public.raw_events
-    WHERE
-        final_score_v2 IS NOT NULL
-        AND (published_at - INTERVAL '6 hours')::date = '{logical_date}'::date
-    ORDER BY final_score_v2 DESC
-    LIMIT 100;
+    WITH ranked_articles AS (
+        SELECT
+            final_score_v2, title, body, source_name, url, event_uri, published_at,
+            ROW_NUMBER() OVER(
+                PARTITION BY event_uri 
+                ORDER BY final_score_v2 DESC
+            ) as rn
+        FROM public.raw_events
+        WHERE
+            final_score_v2 IS NOT NULL
+            AND (published_at - INTERVAL '6 hours')::date = '{logical_date}'::date
+    )
+    SELECT
+        final_score_v2, title, body, source_name, url, event_uri, published_at
+    FROM ranked_articles
+    WHERE rn <= 2
+    ORDER BY final_score_v2 DESC;
     """
     
     log.info("📰 正在从数据库中读取Top 100已打分的新闻（应用6AM规则）...")
