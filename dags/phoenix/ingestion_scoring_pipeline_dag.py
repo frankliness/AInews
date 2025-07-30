@@ -39,9 +39,8 @@ def fetch_data_with_monitoring():
     """
     一个集成了配置、监控和正确API调用的数据抓取任务。
     """
-    # 从Airflow Variable获取API密钥
-    api_key = Variable.get("EVENTREGISTRY_APIKEY")
-    client = NewsApiClient(api_key=api_key)
+    # 初始化客户端（现在内部管理API密钥）
+    client = NewsApiClient()
 
     # --- 最终版：完全由Airflow Variable控制的信源过滤决策逻辑 ---
     import json

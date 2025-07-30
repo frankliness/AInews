@@ -1,9 +1,13 @@
 # 文件路径: scraper/newsapi_client.py (最终版)
 
 import logging
+import json
+import random
 from datetime import datetime, timedelta
+from airflow.models import Variable
 from eventregistry import (
     EventRegistry,
+    EventRegistryError,
     QueryEventsIter,
     QueryEvent,
     RequestEventArticles,
@@ -17,18 +21,67 @@ from eventregistry import (
 log = logging.getLogger(__name__)
 
 class NewsApiClient:
-    def __init__(self, api_key: str):
-        if not api_key:
-            raise ValueError("API key cannot be empty.")
-        self.er = EventRegistry(apiKey=api_key, allowUseOfArchive=False)
+    def __init__(self):
+        """
+        Initializes the client by loading a pool of API keys from Airflow Variables
+        and selecting one to start with.
+        """
+        keys_json_str = Variable.get("ainews_eventregistry_apikeys", default_var='{"keys":[]}')
+        self.api_keys = json.loads(keys_json_str).get("keys", [])
+        if not self.api_keys:
+            raise ValueError("No EventRegistry API keys found in Airflow Variable 'ainews_eventregistry_apikeys'.")
+        
+        # 从列表的随机位置开始，以避免每次都从第一个key开始消耗
+        random.shuffle(self.api_keys)
+        self.current_key_index = 0
         self.source_uri_cache = {}
-        log.info("NewsApiClient initialized successfully.")
+        self._initialize_er_client()
+
+    def _initialize_er_client(self):
+        """Initializes the EventRegistry client with the current key."""
+        current_key = self.api_keys[self.current_key_index]
+        log.info(f"Initializing EventRegistry client with key index: {self.current_key_index}")
+        self.er = EventRegistry(apiKey=current_key, allowUseOfArchive=False)
+
+    def _rotate_key(self):
+        """Rotates to the next API key in the list."""
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        log.info(f"Rotating to next API key. New index: {self.current_key_index}")
+        self._initialize_er_client()
+        # 如果所有key都轮换了一遍，说明可能都已失效，抛出异常
+        if self.current_key_index == 0:
+            raise Exception("All API keys have been tried and failed. Please check their status.")
+
+    def _execute_api_call(self, func, *args, **kwargs):
+        """
+        Executes an API call with automatic key rotation on failure.
+        `func` is the EventRegistry client method to call.
+        """
+        max_retries = len(self.api_keys)
+        for attempt in range(max_retries):
+            try:
+                # 执行实际的API调用
+                return func(*args, **kwargs)
+            except EventRegistryError as e:
+                # 检查错误信息是否与配额相关
+                error_message = str(e).lower()
+                if "daily access quota" in error_message or "not valid" in error_message:
+                    log.info(f"API Key at index {self.current_key_index} failed due to quota/validation error: {e}")
+                    self._rotate_key()
+                    # 继续下一次循环，使用新的key重试
+                    continue 
+                else:
+                    # 如果是其他类型的错误，直接抛出
+                    raise e
+        
+        # 如果循环结束仍未成功，说明所有key都已尝试失败
+        raise Exception("All API keys failed. Unable to complete the API call.")
 
     def get_source_uri(self, source_name: str):
         if source_name in self.source_uri_cache:
             return self.source_uri_cache[source_name]
         try:
-            uri = self.er.getSourceUri(source_name)
+            uri = self._execute_api_call(self.er.getSourceUri, source_name)
             if uri:
                 self.source_uri_cache[source_name] = uri
                 log.info(f"Translated source '{source_name}' to URI '{uri}'.")
@@ -83,7 +136,7 @@ class NewsApiClient:
         # 将构造好的参数字典解包，传入构造函数
         q = QueryEventsIter(**query_params)
 
-        events = list(q.execQuery(self.er, sortBy="size", maxItems=max_events))
+        events = list(self._execute_api_call(q.execQuery, self.er, sortBy="size", maxItems=max_events))
         log.info(f"Fetched {len(events)} events.")
         return events
 
@@ -108,7 +161,7 @@ class NewsApiClient:
         q.setRequestedResult(requested_articles_details)
 
         # 3. 执行查询：只传入一个查询对象
-        result = self.er.execQuery(q)
+        result = self._execute_api_call(self.er.execQuery, q)
 
         # 4. 正确地从返回的嵌套结构中提取文章列表
         if event_uri in result and 'articles' in result[event_uri]:

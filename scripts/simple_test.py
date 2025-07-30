@@ -25,7 +25,7 @@ def simple_test():
         return False
     
     try:
-        client = NewsApiClient(api_key=api_key)
+        client = NewsApiClient()
         print("✅ NewsApiClient 初始化成功")
         
         # 测试信源URI转换

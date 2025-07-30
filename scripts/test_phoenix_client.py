@@ -36,7 +36,7 @@ def test_phoenix_client():
     
     # 2. 初始化客户端
     try:
-        client = NewsApiClient(api_key=api_key)
+        client = NewsApiClient()
         log.info("✅ NewsApiClient 初始化成功")
     except Exception as e:
         log.error(f"❌ NewsApiClient 初始化失败: {e}")
