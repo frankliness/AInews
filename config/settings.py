@@ -1,17 +1,17 @@
 # 文件路径: config/settings.py
 
-# 1. 信源白名单
-# 我们只采纳这些主流、可靠媒体发布的新闻
+# 1. 信源白名单（已迁移至 Airflow Variable: TRUSTED_SOURCES_WHITELIST）
+# 这些参数现在通过 Airflow UI 动态管理：
+# - TRUSTED_SOURCES_WHITELIST: 可信信源列表（JSON 格式）
+# - ENABLE_SOURCE_WHITELIST: 是否启用信源白名单过滤
 
-
-
-TRUSTED_SOURCES = [
-    "tass.ru", "themoscowtimes.com", "ria.ru", "sputniknews.cn",
-    "kyivpost.com", "timesofisrael.com", "bbc.com", "thetimes.co.uk",
-    "nhk.or.jp", "nytimes.com", "cnn.com", "zaobao.com.sg", "reuters.com",
-    "apnews.com", "bloomberg.com", "theguardian.com", "ft.com",
-    "skynews.com", "elpais.com", "scmp.com", "aljazeera.com", "theverge.com"
-]
+# TRUSTED_SOURCES = [
+#     "tass.ru", "themoscowtimes.com", "ria.ru", "sputniknews.cn",
+#     "kyivpost.com", "timesofisrael.com", "bbc.com", "thetimes.co.uk",
+#     "nhk.or.jp", "nytimes.com", "cnn.com", "zaobao.com.sg", "reuters.com",
+#     "apnews.com", "bloomberg.com", "theguardian.com", "ft.com",
+#     "skynews.com", "elpais.com", "scmp.com", "aljazeera.com", "theverge.com"
+# ]
 
 # 2. API消耗控制参数 (已迁移至 Airflow Variables)
 # 这些参数现在通过 Airflow UI 动态管理：

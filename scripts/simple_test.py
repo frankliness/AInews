@@ -10,7 +10,7 @@ import logging
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import TRUSTED_SOURCES
+# from config.settings import TRUSTED_SOURCES  # 已迁移至 Airflow Variable: TRUSTED_SOURCES_WHITELIST
 from scraper.newsapi_client import NewsApiClient
 
 # 配置日志
@@ -29,7 +29,8 @@ def simple_test():
         print("✅ NewsApiClient 初始化成功")
         
         # 测试信源URI转换
-        source_uris = client.get_uris_for_sources(TRUSTED_SOURCES[:3])
+        test_sources = ["reuters.com", "bbc.com", "nytimes.com"]
+        source_uris = client.get_uris_for_sources(test_sources)
         print(f"✅ 成功转换 {len(source_uris)} 个信源URI")
         
         print("🎉 基本功能测试通过！")

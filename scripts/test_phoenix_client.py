@@ -12,7 +12,7 @@ from datetime import datetime
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import TRUSTED_SOURCES
+# from config.settings import TRUSTED_SOURCES  # 已迁移至 Airflow Variable: TRUSTED_SOURCES_WHITELIST
 # from config.settings import MAX_EVENTS_TO_FETCH, ARTICLES_PER_EVENT  # 已迁移至 Airflow Variables
 from scraper.newsapi_client import NewsApiClient
 
@@ -46,15 +46,16 @@ def test_phoenix_client():
     requests_before = client.get_remaining_requests()
     log.info(f"📊 API请求余量: {requests_before}")
     
-    # 4. 测试信源URI转换
-    log.info(f"🔍 测试信源URI转换，白名单包含 {len(TRUSTED_SOURCES)} 个信源")
-    source_uris = client.get_uris_for_sources(TRUSTED_SOURCES[:5])  # 只测试前5个
+    # 4. 测试信源URI转换（使用测试用的固定信源列表）
+    test_sources = ["reuters.com", "bbc.com", "nytimes.com", "cnn.com", "apnews.com"]
+    log.info(f"🔍 测试信源URI转换，使用测试信源列表: {len(test_sources)} 个信源")
+    source_uris = client.get_uris_for_sources(test_sources)
     log.info(f"✅ 成功转换 {len(source_uris)} 个信源URI")
     
     # 5. 测试事件获取（使用较小的限制进行测试）
     log.info(f"📰 测试事件获取，限制: 3 个事件（测试模式）")
     events = client.fetch_trending_events(
-        source_names=TRUSTED_SOURCES[:10],  # 只使用前10个信源进行测试
+        source_names=test_sources,  # 使用测试信源列表
         max_events=3  # 只获取3个事件进行测试
     )
     
