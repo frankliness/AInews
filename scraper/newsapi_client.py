@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from airflow.models import Variable
 from eventregistry import (
     EventRegistry,
-    EventRegistryError,
     QueryEventsIter,
     QueryEvent,
     RequestEventArticles,
@@ -62,10 +61,10 @@ class NewsApiClient:
             try:
                 # 执行实际的API调用
                 return func(*args, **kwargs)
-            except EventRegistryError as e:
+            except Exception as e:
                 # 检查错误信息是否与配额相关
                 error_message = str(e).lower()
-                if "daily access quota" in error_message or "not valid" in error_message:
+                if "daily access quota" in error_message or "not valid" in error_message or "quota" in error_message:
                     log.info(f"API Key at index {self.current_key_index} failed due to quota/validation error: {e}")
                     self._rotate_key()
                     # 继续下一次循环，使用新的key重试
