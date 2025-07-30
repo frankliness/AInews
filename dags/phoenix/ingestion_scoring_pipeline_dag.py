@@ -16,7 +16,7 @@ from airflow.exceptions import AirflowException
 from eventregistry import EventRegistry, GetTrendingConcepts
 
 # 导入我们的配置和客户端
-from config.settings import MAX_EVENTS_TO_FETCH, ARTICLES_PER_EVENT
+# from config.settings import MAX_EVENTS_TO_FETCH, ARTICLES_PER_EVENT  # 已迁移至 Airflow Variables
 from scraper.newsapi_client import NewsApiClient
 from db_utils import bulk_insert_articles
 from advanced_scorer import AdvancedScorer
@@ -79,19 +79,25 @@ def fetch_data_with_monitoring():
     requests_before = client.er.getRemainingAvailableRequests()
     log.info(f"API requests remaining before run: {requests_before}")
 
+    # 从 Airflow Variables 获取动态参数
+    max_events = int(Variable.get("ainews_max_events_to_fetch", default_var=50))
+    articles_per_event = int(Variable.get("ainews_articles_per_event", default_var=1))
+    
+    log.info(f"使用动态参数: max_events={max_events}, articles_per_event={articles_per_event}")
+    
     # 将最终的决策和白名单列表传递给客户端
     events = client.fetch_trending_events(
         source_names=trusted_sources_list,
-        max_events=MAX_EVENTS_TO_FETCH,
+        max_events=max_events,
         use_whitelist=should_use_whitelist # << 使用我们计算出的最终决策
     )
 
     all_articles = []
-    # 2. 循环事件，使用配置文件中的文章数限制，获取文章
+    # 2. 循环事件，使用动态参数获取文章
     for event in events:
         articles = client.fetch_rich_articles_for_event(
             event_uri=event['uri'],
-            articles_count=ARTICLES_PER_EVENT
+            articles_count=articles_per_event
         )
         # 将事件级别的元数据（如总文章数）附加到每篇文章上，便于后续打分
         for article in articles:

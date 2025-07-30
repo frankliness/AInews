@@ -12,7 +12,8 @@ from datetime import datetime
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import TRUSTED_SOURCES, MAX_EVENTS_TO_FETCH, ARTICLES_PER_EVENT
+from config.settings import TRUSTED_SOURCES
+# from config.settings import MAX_EVENTS_TO_FETCH, ARTICLES_PER_EVENT  # 已迁移至 Airflow Variables
 from scraper.newsapi_client import NewsApiClient
 
 # 配置日志
@@ -51,7 +52,7 @@ def test_phoenix_client():
     log.info(f"✅ 成功转换 {len(source_uris)} 个信源URI")
     
     # 5. 测试事件获取（使用较小的限制进行测试）
-    log.info(f"📰 测试事件获取，限制: {MAX_EVENTS_TO_FETCH} 个事件")
+    log.info(f"📰 测试事件获取，限制: 3 个事件（测试模式）")
     events = client.fetch_trending_events(
         source_names=TRUSTED_SOURCES[:10],  # 只使用前10个信源进行测试
         max_events=3  # 只获取3个事件进行测试

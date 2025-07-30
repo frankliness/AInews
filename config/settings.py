@@ -13,8 +13,10 @@ TRUSTED_SOURCES = [
     "skynews.com", "elpais.com", "scmp.com", "aljazeera.com", "theverge.com"
 ]
 
-# 2. API消耗控制参数 (可配置)
-# 在测试时可以调低这些值，在生产环境中调高
+# 2. API消耗控制参数 (已迁移至 Airflow Variables)
+# 这些参数现在通过 Airflow UI 动态管理：
+# - ainews_max_events_to_fetch: 每次运行最多获取的事件数量
+# - ainews_articles_per_event: 每个事件最多获取的文章数量
 
-MAX_EVENTS_TO_FETCH = 10  # 每次运行最多获取的事件数量
-ARTICLES_PER_EVENT = 2     # 每个事件最多获取的文章数量 
+# MAX_EVENTS_TO_FETCH = 50  # 已迁移至 Airflow Variable: ainews_max_events_to_fetch
+# ARTICLES_PER_EVENT = 1    # 已迁移至 Airflow Variable: ainews_articles_per_event 
