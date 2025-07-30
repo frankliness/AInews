@@ -26,13 +26,17 @@ log = logging.getLogger(__name__)
 def test_phoenix_client():
     """测试 Phoenix NewsAPIClient 的核心功能"""
     
-    # 1. 获取API密钥
-    api_key = os.getenv('EVENTREGISTRY_APIKEY')
-    if not api_key:
-        log.error("环境变量 EVENTREGISTRY_APIKEY 未设置")
-        return False
-    
-    log.info("✅ API密钥已获取")
+    # 1. 检查 Airflow Variables 是否可用（测试环境）
+    try:
+        from airflow.models import Variable
+        log.info("✅ Airflow Variables 可用")
+    except ImportError:
+        log.warning("⚠️ Airflow Variables 不可用，使用环境变量作为备选")
+        api_key = os.getenv('EVENTREGISTRY_APIKEY')
+        if not api_key:
+            log.error("环境变量 EVENTREGISTRY_APIKEY 未设置")
+            return False
+        log.info("✅ API密钥已获取（环境变量）")
     
     # 2. 初始化客户端
     try:

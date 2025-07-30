@@ -131,9 +131,9 @@ def update_trending_concepts():
     """
     log.info("开始更新概念热度榜...")
     
-    # 从Airflow Variable获取API密钥
-    api_key = Variable.get("EVENTREGISTRY_APIKEY")
-    er = EventRegistry(apiKey=api_key, allowUseOfArchive=False)
+    # 使用新的 API Key 管理系统
+    client = NewsApiClient()
+    er = client.er
     
     try:
         # 调用GetTrendingConcepts API获取最新的概念热度榜
@@ -142,7 +142,7 @@ def update_trending_concepts():
             count=200,          # 建议获取比100稍多的数量，以增加匹配概率
             conceptType=["person", "org", "loc"]  # 我们关心的三种实体类型
         )
-        result = er.execQuery(query)
+        result = client._execute_api_call(er.execQuery, query)
         
         # 处理API响应，构建概念热度字典
         # EventRegistry API返回的是列表格式
