@@ -16,16 +16,11 @@ log = logging.getLogger(__name__)
 
 def test_fix():
     """测试修复后的方法"""
-    api_key = os.getenv('EVENTREGISTRY_APIKEY')
-    if not api_key:
-        print("❌ API密钥未设置")
-        return False
-    
     try:
         # 直接导入我们的客户端
         from scraper.newsapi_client import NewsApiClient
         
-        client = NewsApiClient(api_key=api_key)
+        client = NewsApiClient()
         print("✅ NewsApiClient 初始化成功")
         
         # 测试一个已知的事件URI

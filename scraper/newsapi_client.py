@@ -64,7 +64,10 @@ class NewsApiClient:
             except Exception as e:
                 # 检查错误信息是否与配额相关
                 error_message = str(e).lower()
-                if "daily access quota" in error_message or "not valid" in error_message or "quota" in error_message:
+                if ("daily access quota" in error_message or 
+                    "not valid" in error_message or 
+                    "quota" in error_message or
+                    "not recognized as a valid key" in error_message):
                     log.info(f"API Key at index {self.current_key_index} failed due to quota/validation error: {e}")
                     self._rotate_key()
                     # 继续下一次循环，使用新的key重试
@@ -72,7 +75,6 @@ class NewsApiClient:
                 else:
                     # 如果是其他类型的错误，直接抛出
                     raise e
-        
         # 如果循环结束仍未成功，说明所有key都已尝试失败
         raise Exception("All API keys failed. Unable to complete the API call.")
 
@@ -98,7 +100,7 @@ class NewsApiClient:
         """获取热门事件，并根据开关决定是否启用信源白名单过滤。"""
         log.info(f"Fetching up to {max_events} trending events...")
 
-        # 【核心修复】: 将所有参数“平铺”开来，作为独立的关键字参数传递
+        # 【核心修复】: 将所有参数"平铺"开来，作为独立的关键字参数传递
         # 我们不再使用 requestedResult 参数
         # 【核心修复】: 构造一个完全符合SDK三层嵌套结构的"参数套娃"
         # 第一层：创建唯一有效的"主订单" -> RequestEventsInfo
@@ -150,23 +152,23 @@ class NewsApiClient:
             returnInfo=ReturnInfo(
                 articleInfo=ArticleInfoFlags(
                     sourceInfo=True, concepts=True, sentiment=True, body=True,
-                    title=True, url=True, dateTimePub=True
+                    title=True, url=True, image=True, date=True
                 )
             )
         )
 
-        # 2. 【核心修复】构造"主订单"，并用.setRequestedResult()方法来附加"订单详情"
-        q = QueryEvent(event_uri)
-        q.setRequestedResult(requested_articles_details)
+        # 2. 构造"查询订单"：我们要查什么？
+        query = QueryEvent(event_uri)
 
-        # 3. 执行查询：只传入一个查询对象
-        result = self._execute_api_call(self.er.execQuery, q)
-
-        # 4. 正确地从返回的嵌套结构中提取文章列表
+        # 3. 执行查询：设置请求参数并执行
+        query.setRequestedResult(requested_articles_details)
+        result = self._execute_api_call(self.er.execQuery, query)
+        
+        # 4. 从嵌套结构中提取文章列表
         if event_uri in result and 'articles' in result[event_uri]:
-             articles = result[event_uri]['articles']['results']
-             log.info(f"✅ Fetched {len(articles)} articles for event {event_uri}")
-             return articles
+            articles = result[event_uri]['articles']['results']
+            log.info(f"Fetched {len(articles)} articles for event {event_uri}.")
+            return articles
         else:
-             log.warning(f"No articles found for event {event_uri}")
-             return []
+            log.warning(f"No articles found for event {event_uri}")
+            return []

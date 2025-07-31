@@ -19,18 +19,6 @@ log = logging.getLogger(__name__)
 
 def simple_test():
     """简化的测试"""
-    # 检查 Airflow Variables 是否可用（测试环境）
-    try:
-        from airflow.models import Variable
-        print("✅ Airflow Variables 可用")
-    except ImportError:
-        print("⚠️ Airflow Variables 不可用，使用环境变量作为备选")
-        api_key = os.getenv('EVENTREGISTRY_APIKEY')
-        if not api_key:
-            print("❌ API密钥未设置")
-            return False
-        print("✅ API密钥已获取（环境变量）")
-    
     try:
         client = NewsApiClient()
         print("✅ NewsApiClient 初始化成功")

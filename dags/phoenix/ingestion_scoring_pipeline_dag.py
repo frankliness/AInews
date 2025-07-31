@@ -39,7 +39,7 @@ def fetch_data_with_monitoring():
     """
     一个集成了配置、监控和正确API调用的数据抓取任务。
     """
-    # 初始化客户端（现在内部管理API密钥）
+    # 使用多key管理系统
     client = NewsApiClient()
 
     # --- 最终版：完全由Airflow Variable控制的信源过滤决策逻辑 ---
@@ -131,7 +131,7 @@ def update_trending_concepts():
     """
     log.info("开始更新概念热度榜...")
     
-    # 使用新的 API Key 管理系统
+    # 使用多key管理系统
     client = NewsApiClient()
     er = client.er
     

@@ -31,7 +31,6 @@ COPY dags/ /opt/airflow/dags/
 COPY scraper/ /opt/airflow/scraper/
 COPY config/ /opt/airflow/config/
 COPY utils/ /opt/airflow/utils/
-COPY scripts/ /opt/airflow/scripts/
 
 # 清理可能遗留的 .pyc / __pycache__ 文件
 RUN find /opt/airflow -name '*.py[co]' -delete && \
