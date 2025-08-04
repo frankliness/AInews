@@ -1,4 +1,0 @@
-# 去同质化v2依赖
-scikit-learn>=1.4.0
-ruamel.yaml>=0.18.0
-sqlalchemy>=1.4.0 

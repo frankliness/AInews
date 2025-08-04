@@ -182,3 +182,32 @@ LANG=zh  # 改成 en 可切换英文
 数据库: ainews
 用户名: airflow
 密码: airflow_pass
+
+访问 Phoenix Airflow UI: http://localhost:8082
+登录凭据:
+用户名: phoenix_admin
+密码: phoenix123
+在 Phoenix UI 中手动触发 DAG:
+找到 phoenix_news_pipeline DAG
+点击 "Trigger DAG" 按钮
+
+Phoenix 数据库连接参数：
+参数	值
+Host	localhost
+Port	5434
+Database	phoenix_db
+Username	phoenix_user
+Password	phoenix_pass
+
+使用方式
+在 Airflow UI 中设置 API Keys：
+登录 Airflow UI
+导航到 "Admin" -> "Variables"
+创建变量 ainews_eventregistry_apikeys，值为 JSON 格式：
+{
+    "keys": [
+        "b03b250a-97ec-4dd0-905e-a038eb1a73e5",
+        "b759aed1-f268-405b-90f9-03966227e0bd",
+        "4c0d66ce-07b2-457b-97dc-a08297e61bed"
+    ]
+}
