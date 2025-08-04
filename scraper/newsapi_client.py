@@ -14,7 +14,8 @@ from eventregistry import (
     ArticleInfoFlags,
     EventInfoFlags,
     RequestEventsInfo,
-    QueryItems
+    QueryItems,
+    SourceInfoFlags
 )
 
 log = logging.getLogger(__name__)
@@ -96,9 +97,17 @@ class NewsApiClient:
     def get_uris_for_sources(self, source_names: list):
         return [uri for name in source_names if (uri := self.get_source_uri(name)) is not None]
 
-    def fetch_trending_events(self, source_names: list, max_events: int, use_whitelist: bool = True):
-        """获取热门事件，并根据开关决定是否启用信源白名单过滤。"""
-        log.info(f"Fetching up to {max_events} trending events...")
+    def fetch_trending_events(self, source_names: list[str], max_events: int, use_whitelist: bool = True, sort_by: str = "size", date_start: datetime | None = None):
+        """获取热门事件，并根据开关决定是否启用信源白名单过滤。
+        
+        Args:
+            source_names: 信源名称列表
+            max_events: 最大事件数量
+            use_whitelist: 是否使用白名单过滤
+            sort_by: 排序方式，"size"表示按热门程度，"date"表示按时间
+            date_start: 开始时间，仅在sort_by="date"时使用
+        """
+        log.info(f"Fetching up to {max_events} trending events with sort_by={sort_by}...")
 
         # 【核心修复】: 将所有参数"平铺"开来，作为独立的关键字参数传递
         # 我们不再使用 requestedResult 参数
@@ -118,10 +127,16 @@ class NewsApiClient:
         # 准备基础查询参数，这次我们将正确的"参数套娃"放入'requestedResult'
         query_params = {
             "lang": 'eng',
-            "dateStart": datetime.utcnow() - timedelta(hours=24),
             "minArticlesInEvent": 3,
             "requestedResult": requested_result
         }
+
+        # 根据排序方式设置不同的时间范围
+        if sort_by == "date" and date_start:
+            query_params["dateStart"] = date_start
+            log.info(f"Using custom date_start: {date_start}")
+        else:
+            query_params["dateStart"] = datetime.utcnow() - timedelta(hours=24)
 
         if use_whitelist:
             log.info(f"Source whitelist is ENABLED. Filtering by {len(source_names)} trusted sources...")
@@ -137,8 +152,8 @@ class NewsApiClient:
         # 将构造好的参数字典解包，传入构造函数
         q = QueryEventsIter(**query_params)
 
-        events = list(self._execute_api_call(q.execQuery, self.er, sortBy="size", maxItems=max_events))
-        log.info(f"Fetched {len(events)} events.")
+        events = list(self._execute_api_call(q.execQuery, self.er, sortBy=sort_by, maxItems=max_events))
+        log.info(f"Fetched {len(events)} events with sort_by={sort_by}.")
         return events
 
     def fetch_rich_articles_for_event(self, event_uri: str, articles_count: int):
@@ -153,7 +168,8 @@ class NewsApiClient:
                 articleInfo=ArticleInfoFlags(
                     sourceInfo=True, concepts=True, sentiment=True, body=True,
                     title=True, url=True, image=True, date=True
-                )
+                ),
+                sourceInfo=SourceInfoFlags(ranking=True)
             )
         )
 

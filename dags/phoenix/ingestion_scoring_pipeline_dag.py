@@ -38,6 +38,7 @@ default_args = {
 def fetch_data_with_monitoring():
     """
     一个集成了配置、监控和正确API调用的数据抓取任务。
+    实现"双路并行"抓取：热门事件 + 突发事件
     """
     # 使用多key管理系统
     client = NewsApiClient()
@@ -79,17 +80,55 @@ def fetch_data_with_monitoring():
     log.info(f"API requests remaining before run: {requests_before}")
 
     # 从 Airflow Variables 获取动态参数
-    max_events = int(Variable.get("ainews_max_events_to_fetch", default_var=50))
     articles_per_event = int(Variable.get("ainews_articles_per_event", default_var=1))
     
-    log.info(f"使用动态参数: max_events={max_events}, articles_per_event={articles_per_event}")
+    # --- 双路并行抓取逻辑 ---
+    # a. 读取变量
+    popular_events_limit = int(Variable.get("ainews_popular_events_limit", default_var=30))
+    breaking_events_limit = int(Variable.get("ainews_breaking_events_limit", default_var=20))
+    breaking_recent_hours = int(Variable.get("ainews_breaking_recent_hours", default_var=6))
     
-    # 将最终的决策和白名单列表传递给客户端
-    events = client.fetch_trending_events(
+    log.info(f"双路并行抓取参数: popular_events_limit={popular_events_limit}, breaking_events_limit={breaking_events_limit}, breaking_recent_hours={breaking_recent_hours}")
+    
+    # b. 双路调用
+    # 热门事件抓取
+    log.info("开始抓取热门事件...")
+    popular_events = client.fetch_trending_events(
         source_names=trusted_sources_list,
-        max_events=max_events,
-        use_whitelist=should_use_whitelist # << 使用我们计算出的最终决策
+        max_events=popular_events_limit,
+        use_whitelist=should_use_whitelist,
+        sort_by="size"
     )
+    log.info(f"热门事件抓取完成，获得 {len(popular_events)} 个事件")
+    
+    # 突发事件抓取
+    log.info("开始抓取突发事件...")
+    breaking_date_start = datetime.utcnow() - timedelta(hours=breaking_recent_hours)
+    breaking_events = client.fetch_trending_events(
+        source_names=trusted_sources_list,
+        max_events=breaking_events_limit,
+        use_whitelist=should_use_whitelist,
+        sort_by="date",
+        date_start=breaking_date_start
+    )
+    log.info(f"突发事件抓取完成，获得 {len(breaking_events)} 个事件")
+    
+    # c. 合并去重
+    all_events = popular_events + breaking_events
+    log.info(f"合并前总事件数: {len(all_events)}")
+    
+    # 基于事件的 uri 字段进行去重
+    seen_uris = set()
+    unique_events = []
+    for event in all_events:
+        if event['uri'] not in seen_uris:
+            seen_uris.add(event['uri'])
+            unique_events.append(event)
+    
+    log.info(f"去重后事件数: {len(unique_events)} (去重了 {len(all_events) - len(unique_events)} 个重复事件)")
+    
+    # 使用去重后的事件列表继续处理
+    events = unique_events
 
     all_articles = []
     # 2. 循环事件，使用动态参数获取文章

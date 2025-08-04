@@ -60,6 +60,7 @@ services:
       - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
+      - PYTHONPATH=/opt/airflow:/opt/airflow/dags/phoenix
     command:
       - bash
       - -c
@@ -91,10 +92,16 @@ services:
       - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
+      - PYTHONPATH=/opt/airflow:/opt/airflow/dags/phoenix
     ports:
       - "8082:8080"  # 使用端口 8082 避免冲突
     volumes:
-      - ./dags/phoenix:/opt/airflow/dags  # 只挂载 Phoenix 专用 DAG
+      - ./dags/phoenix:/opt/airflow/dags/phoenix
+      - ./config:/opt/airflow/config
+      - ./scraper:/opt/airflow/scraper
+      - ./sql:/opt/airflow/sql
+      - ./utils:/opt/airflow/utils
+      - ./logs:/opt/airflow/logs
       - phoenix_logs:/opt/airflow/logs
       - ../exports:/opt/airflow/exports
     networks:
@@ -116,8 +123,14 @@ services:
       - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - EVENTREGISTRY_APIKEY=${EVENTREGISTRY_APIKEY}
+      - PYTHONPATH=/opt/airflow:/opt/airflow/dags/phoenix
     volumes:
-      - ./dags/phoenix:/opt/airflow/dags  # 只挂载 Phoenix 专用 DAG
+      - ./dags/phoenix:/opt/airflow/dags/phoenix
+      - ./config:/opt/airflow/config
+      - ./scraper:/opt/airflow/scraper
+      - ./sql:/opt/airflow/sql
+      - ./utils:/opt/airflow/utils
+      - ./logs:/opt/airflow/logs
       - phoenix_logs:/opt/airflow/logs
       - ../exports:/opt/airflow/exports
     command: ["airflow", "scheduler"]

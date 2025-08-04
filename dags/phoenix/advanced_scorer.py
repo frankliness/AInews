@@ -5,10 +5,14 @@ AdvancedScorer - V2系统高级打分器
 """
 
 import logging
+import math
+from datetime import datetime
+import pytz
 import numpy as np
 import pandas as pd
 from typing import Dict, Any
 from sklearn.preprocessing import MinMaxScaler
+from airflow.models import Variable
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +73,20 @@ class AdvancedScorer:
         # 创建DataFrame副本以避免修改原数据
         scored_df = df.copy()
         
+        # 第一步：读取所有评分参数
+        log.info("从Airflow Variables读取评分参数...")
+        # 读取新鲜度计算参数
+        tau = float(Variable.get("ainews_freshness_tau_hours", default_var=6))
+        
+        # 读取所有维度的权重
+        w_hot = float(Variable.get("ainews_weight_hot", default_var=0.35))
+        w_auth = float(Variable.get("ainews_weight_authority", default_var=0.25))
+        w_concept = float(Variable.get("ainews_weight_concept", default_var=0.20))
+        w_fresh = float(Variable.get("ainews_weight_freshness", default_var=0.15))
+        w_sent = float(Variable.get("ainews_weight_sentiment", default_var=0.05))
+        
+        log.info(f"评分参数: tau={tau}, w_hot={w_hot}, w_auth={w_auth}, w_concept={w_concept}, w_fresh={w_fresh}, w_sent={w_sent}")
+        
         # 1. 计算 entity_hot_score (实体热度分)
         log.info("计算实体热度分 (entity_hot_score)...")
         scored_df['entity_hot_score'] = scored_df['concepts'].apply(
@@ -92,28 +110,26 @@ class AdvancedScorer:
             (0.3 * np.log1p(scored_df['entity_hot_score']))
         )
         
-        # 3. 计算 rep_score_v2 (代表性分)
-        log.info("计算代表性分 (rep_score_v2)...")
-        # 为了演示，我们设置默认的cluster_size和centroid_sim值
-        # 在实际的聚类系统中，这些值应该来自聚类算法
-        if 'cluster_size' not in scored_df.columns:
-            scored_df['cluster_size'] = 10  # 默认簇大小
-        if 'centroid_sim' not in scored_df.columns:
-            scored_df['centroid_sim'] = 0.8  # 默认相似度
+        # 3. 计算权威分 (rep_score_v2) - 使用从API获取的importanceRank
+        log.info("计算权威分 (rep_score_v2)...")
         
-        # 确保cluster_size列存在且数值大于0，避免log10(0)错误，并转换为float
-        scored_df['cluster_size'] = pd.to_numeric(
-            scored_df['cluster_size'], errors='coerce'
-        ).fillna(1).clip(lower=1).astype(float)
+        # --- 开始计算权威分 ---
+        log.info("Calculating authority score from API-fetched source_importance (rank)...")
+
+        # 1. 反转排名：排名越低（数字越大），分数越低。我们将其转换为 0-1 的分数。
+        #    我们知道 importanceRank 数字越小越好。
+        #    公式: score = (基数 - rank) / 基数
+        #    我们使用 .fillna() 处理空值，给予一个非常靠后的默认排名 (1,000,001)，使其得分接近于0。
+        scored_df['rep_norm'] = (1000001 - scored_df['source_importance'].fillna(1000001)) / 1000000.0
+
+        # 2. 将分数限制在 [0, 1] 区间内，防止因异常rank值导致分数超出范围。
+        scored_df['rep_norm'] = scored_df['rep_norm'].clip(lower=0, upper=1)
+
+        log.info("Authority score calculation complete.")
+        # --- 结束计算权威分 ---
         
-        scored_df['centroid_sim'] = pd.to_numeric(
-            scored_df['centroid_sim'], errors='coerce'
-        ).fillna(1.0).astype(float)
-        
-        scored_df['rep_score_v2'] = (
-            scored_df['centroid_sim'] * 
-            (1 - 0.4 * np.log10(scored_df['cluster_size']))
-        )
+        # 为了保持兼容性，我们也将rep_norm赋值给rep_score_v2
+        scored_df['rep_score_v2'] = scored_df['rep_norm']
         
         # 4. 计算 sent_score_v2 (情感分)
         log.info("计算情感分 (sent_score_v2)...")
@@ -128,7 +144,7 @@ class AdvancedScorer:
         
         # 5. 归一化所有分数
         log.info("对所有分数进行归一化...")
-        score_columns = ['hot_score_v2', 'rep_score_v2', 'sent_score_v2']
+        score_columns = ['hot_score_v2', 'sent_score_v2', 'entity_hot_score']  # 移除 rep_score_v2，因为我们已经直接计算了 rep_norm
         
         # 调试：检查分数列是否存在
         log.info(f"当前DataFrame列: {list(scored_df.columns)}")
@@ -138,13 +154,13 @@ class AdvancedScorer:
                 log.error(f"缺少分数列: {col}")
                 continue
                 
-            # 正确的归一化列名：hot_score_v2 -> hot_norm, rep_score_v2 -> rep_norm, sent_score_v2 -> sent_norm
+            # 正确的归一化列名：hot_score_v2 -> hot_norm, sent_score_v2 -> sent_norm, entity_hot_score -> concept_hot_norm
             if col == 'hot_score_v2':
                 norm_col = 'hot_norm'
-            elif col == 'rep_score_v2':
-                norm_col = 'rep_norm'
             elif col == 'sent_score_v2':
                 norm_col = 'sent_norm'
+            elif col == 'entity_hot_score':
+                norm_col = 'concept_hot_norm'
             else:
                 norm_col = col.replace('_v2', '_norm')
                 
@@ -162,11 +178,38 @@ class AdvancedScorer:
         # 调试：检查归一化后的列
         log.info(f"归一化后DataFrame列: {list(scored_df.columns)}")
         
-        # 6. 计算最终综合分数 final_score_v2
+        # 第二步：计算时区感知的"新鲜分"
+        log.info("Calculating timezone-aware freshness score...")
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        utc_now = datetime.now(pytz.utc)
+
+        # 确保 'published_at' 列是 pandas 的 datetime 类型
+        scored_df['published_at'] = pd.to_datetime(scored_df['published_at'])
+
+        # 处理时区转换 - 检查是否已经是时区感知的
+        if scored_df['published_at'].dt.tz is None:
+            # 如果还没有时区信息，假设是北京时间并添加时区信息
+            published_at_beijing = scored_df['published_at'].dt.tz_localize(beijing_tz)
+        else:
+            # 如果已经有时区信息，直接使用
+            published_at_beijing = scored_df['published_at']
+
+        # 转换为标准的 UTC 时间
+        published_at_utc = published_at_beijing.dt.tz_convert(pytz.utc)
+
+        # 计算与当前 UTC 时间的差值（单位：小时）
+        time_diff = utc_now - published_at_utc
+        hours_diff = time_diff.dt.total_seconds() / 3600
+
+        # 应用指数衰减公式计算新鲜分
+        scored_df['freshness_score'] = np.exp(-hours_diff / tau)
+        log.info("Freshness score calculation complete.")
+        
+        # 第三步：更新最终总分计算公式
         log.info("计算最终综合分数 (final_score_v2)...")
         
         # 安全检查：确保所有归一化列都存在
-        required_norm_cols = ['hot_norm', 'rep_norm', 'sent_norm']
+        required_norm_cols = ['hot_norm', 'rep_norm', 'sent_norm', 'concept_hot_norm']  # rep_norm 已经通过权威分计算直接生成
         missing_cols = [col for col in required_norm_cols if col not in scored_df.columns]
         
         if missing_cols:
@@ -174,10 +217,13 @@ class AdvancedScorer:
             log.error(f"当前列: {list(scored_df.columns)}")
             raise ValueError(f"缺少必需的归一化列: {missing_cols}")
         
+        # 更新最终总分公式，加入新鲜分并使用从Airflow读取的权重
         scored_df['final_score_v2'] = (
-            0.4 * scored_df['hot_norm'] + 
-            0.3 * scored_df['rep_norm'] + 
-            0.3 * scored_df['sent_norm']
+            scored_df['hot_norm'] * w_hot +
+            scored_df['rep_norm'] * w_auth +       # 假设 rep_norm 代表权威度
+            scored_df['concept_hot_norm'] * w_concept + # 假设 concept_hot_norm 代表概念热度
+            scored_df['freshness_score'] * w_fresh +
+            scored_df['sent_norm'] * w_sent
         )
         
         log.info(f"✅ V2打分完成！最高分: {scored_df['final_score_v2'].max():.4f}")

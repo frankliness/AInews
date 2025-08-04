@@ -87,6 +87,11 @@ def bulk_insert_articles(articles: list, conn_id: str = None):
             log.warning(f"无法转换发布时间: {article.get('dateTimePub')}")
             published_at_beijing = current_beijing_time
         
+        # 解析 importanceRank
+        importance_rank = None  # 默认值
+        if 'source' in article and article.get('source') and 'ranking' in article['source'] and article['source'].get('ranking'):
+            importance_rank = article['source']['ranking'].get('importanceRank')
+        
         insert_tuples.append(
             (
                 article.get('uri'),
@@ -97,7 +102,7 @@ def bulk_insert_articles(articles: list, conn_id: str = None):
                 current_beijing_time,  # collected_at 使用当前北京时间
                 article.get('sentiment'),
                 article.get('source', {}).get('uri'),
-                article.get('source', {}).get('importance'),
+                importance_rank,  # 使用解析到的 importanceRank
                 article.get('eventUri'),
                 # 附加的事件级元数据
                 article.get('totalArticleCountInEvent', 0),
