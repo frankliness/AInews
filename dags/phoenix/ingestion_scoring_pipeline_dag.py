@@ -305,7 +305,12 @@ def process_and_score_articles():
                     hot_norm = %s,
                     rep_norm = %s,
                     sent_norm = %s,
-                    final_score_v2 = %s
+                    final_score_v2 = %s,
+                    is_routine_topic = %s,
+                    is_category_topic = %s,
+                    is_breaking_news = %s,
+                    is_suppressed = %s,
+                    is_downweighted = %s
                 WHERE id = %s
                 """
                 
@@ -320,6 +325,11 @@ def process_and_score_articles():
                         float(row['rep_norm']),
                         float(row['sent_norm']),
                         float(row['final_score_v2']),
+                        bool(row['is_routine_topic']),
+                        bool(row['is_category_topic']),
+                        bool(row['is_breaking_news']),
+                        bool(row['is_suppressed']),
+                        bool(row['is_downweighted']),
                         row['id']
                     ))
                 

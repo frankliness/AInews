@@ -368,4 +368,122 @@ SELECT
     CASE 
         WHEN (SELECT COUNT(*) FROM raw_events WHERE topic_id IS NOT NULL AND published_at >= NOW() - INTERVAL '1 HOUR') > 0 THEN '正常'
         ELSE '异常'
-    END as clustering_status; 
+    END as clustering_status;
+
+-- ===========================================
+-- 10. 双重话题抑制监控
+-- ===========================================
+
+-- 10.1 抑制效果统计 (需要根据实际实现调整字段名)
+SELECT 
+    COUNT(*) as total_articles_24h,
+    COUNT(CASE WHEN is_routine_topic = true THEN 1 END) as routine_topic_articles,
+    COUNT(CASE WHEN is_category_topic = true THEN 1 END) as category_topic_articles,
+    COUNT(CASE WHEN is_breaking_news = true THEN 1 END) as breaking_news_articles,
+    COUNT(CASE WHEN is_suppressed = true THEN 1 END) as suppressed_articles,
+    COUNT(CASE WHEN is_downweighted = true THEN 1 END) as downweighted_articles,
+    ROUND(COUNT(CASE WHEN is_suppressed = true THEN 1 END) * 100.0 / COUNT(*), 2) as suppression_rate,
+    ROUND(COUNT(CASE WHEN is_downweighted = true THEN 1 END) * 100.0 / COUNT(*), 2) as downweight_rate
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS';
+
+-- 10.2 抑制前后分数对比
+SELECT 
+    'Before Suppression' as period,
+    AVG(hot_norm) as avg_hot_norm,
+    AVG(final_score_v2) as avg_final_score,
+    COUNT(*) as article_count
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+  AND is_routine_topic = true
+  AND is_breaking_news = false
+
+UNION ALL
+
+SELECT 
+    'After Suppression' as period,
+    AVG(hot_norm) as avg_hot_norm,
+    AVG(final_score_v2) as avg_final_score,
+    COUNT(*) as article_count
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+  AND is_suppressed = true;
+
+-- 10.3 话题类型分布
+SELECT 
+    CASE 
+        WHEN is_routine_topic = true AND is_breaking_news = false THEN '常规话题(非爆点)'
+        WHEN is_routine_topic = true AND is_breaking_news = true THEN '常规话题(爆点)'
+        WHEN is_category_topic = true THEN '领域话题'
+        ELSE '其他话题'
+    END as topic_category,
+    COUNT(*) as article_count,
+    AVG(final_score_v2) as avg_final_score,
+    AVG(hot_norm) as avg_hot_norm
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+GROUP BY topic_category
+ORDER BY article_count DESC;
+
+-- 10.4 抑制效果趋势 (按小时统计)
+SELECT 
+    EXTRACT(HOUR FROM published_at) as hour,
+    COUNT(*) as total_articles,
+    COUNT(CASE WHEN is_suppressed = true THEN 1 END) as suppressed_count,
+    COUNT(CASE WHEN is_downweighted = true THEN 1 END) as downweighted_count,
+    ROUND(COUNT(CASE WHEN is_suppressed = true THEN 1 END) * 100.0 / COUNT(*), 2) as suppression_rate,
+    ROUND(COUNT(CASE WHEN is_downweighted = true THEN 1 END) * 100.0 / COUNT(*), 2) as downweight_rate
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+GROUP BY hour
+ORDER BY hour;
+
+-- 10.5 数据源抑制效果分析
+SELECT 
+    source,
+    COUNT(*) as total_articles,
+    COUNT(CASE WHEN is_suppressed = true THEN 1 END) as suppressed_articles,
+    COUNT(CASE WHEN is_downweighted = true THEN 1 END) as downweighted_articles,
+    ROUND(COUNT(CASE WHEN is_suppressed = true THEN 1 END) * 100.0 / COUNT(*), 2) as suppression_rate,
+    ROUND(COUNT(CASE WHEN is_downweighted = true THEN 1 END) * 100.0 / COUNT(*), 2) as downweight_rate,
+    AVG(final_score_v2) as avg_final_score
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+GROUP BY source
+ORDER BY total_articles DESC;
+
+-- 10.6 抑制效果质量评估
+SELECT 
+    'Suppressed Articles' as category,
+    COUNT(*) as article_count,
+    AVG(final_score_v2) as avg_final_score,
+    AVG(hot_norm) as avg_hot_norm,
+    AVG(rep_norm) as avg_rep_norm
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+  AND is_suppressed = true
+
+UNION ALL
+
+SELECT 
+    'Downweighted Articles' as category,
+    COUNT(*) as article_count,
+    AVG(final_score_v2) as avg_final_score,
+    AVG(hot_norm) as avg_hot_norm,
+    AVG(rep_norm) as avg_rep_norm
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+  AND is_downweighted = true
+
+UNION ALL
+
+SELECT 
+    'Normal Articles' as category,
+    COUNT(*) as article_count,
+    AVG(final_score_v2) as avg_final_score,
+    AVG(hot_norm) as avg_hot_norm,
+    AVG(rep_norm) as avg_rep_norm
+FROM raw_events 
+WHERE published_at >= NOW() - INTERVAL '24 HOURS'
+  AND is_suppressed = false 
+  AND is_downweighted = false; 

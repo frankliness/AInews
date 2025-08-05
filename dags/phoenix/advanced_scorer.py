@@ -205,6 +205,56 @@ class AdvancedScorer:
         scored_df['freshness_score'] = np.exp(-hours_diff / tau)
         log.info("Freshness score calculation complete.")
         
+        # --- 开始执行双重话题抑制逻辑 (高性能向量化版) ---
+        log.info("Applying dual topic suppression & down-weighting logic using vectorized operations...")
+
+        # 1. 从 Airflow Variables 读取所有抑制规则
+        routine_topic_uris = set(Variable.get("ainews_routine_topic_uris", deserialize_json=True, default_var=[]))
+        downweight_category_uris = set(Variable.get("ainews_downweight_category_uris", deserialize_json=True, default_var=[]))
+
+        routine_damping = float(Variable.get("ainews_routine_topic_damping_factor", default_var=0.3))
+        category_damping = float(Variable.get("ainews_category_damping_factor", default_var=0.5))
+
+        freshness_threshold = float(Variable.get("ainews_freshness_threshold_for_breaking", default_var=0.8))
+
+        # 2. 创建布尔掩码 (Boolean Masks) 来识别不同类型的文章
+        #    首先，将 concepts 列中的 URI 列表转换为集合，以便快速进行交集检查
+        concept_sets = scored_df['concepts'].apply(lambda concepts_list: {concept['uri'] for concept in concepts_list})
+
+        # 掩码 A: 标记所有属于"常规话题"的文章
+        routine_mask = concept_sets.apply(lambda s: not s.isdisjoint(routine_topic_uris))
+
+        # 掩码 B: 标记所有属于需要降权的"领域话题"的文章
+        category_mask = concept_sets.apply(lambda s: not s.isdisjoint(downweight_category_uris))
+
+        # 掩码 C: 标记所有属于"爆点"的文章 (新鲜度足够高)
+        breaking_mask = scored_df['freshness_score'] >= freshness_threshold
+
+        # 3. 添加监控标记字段
+        scored_df['is_routine_topic'] = routine_mask
+        scored_df['is_category_topic'] = category_mask
+        scored_df['is_breaking_news'] = breaking_mask
+        scored_df['is_suppressed'] = routine_mask & ~breaking_mask
+        scored_df['is_downweighted'] = category_mask & ~routine_mask
+
+        # 4. 应用抑制和降权逻辑
+        # 规则一：对属于"常规话题"且"不是爆点"的文章，应用常规抑制系数
+        # 我们使用 ~breaking_mask 来反转爆点掩码
+        scored_df.loc[routine_mask & ~breaking_mask, 'hot_norm'] *= routine_damping
+
+        # 规则二：对属于"领域话题"的文章，应用领域降权系数
+        # 注意：为了保证互斥性，我们只对那些没有被规则一处理过的文章应用此规则
+        # 我们使用 ~routine_mask 来确保只选择不属于常规话题的文章
+        scored_df.loc[category_mask & ~routine_mask, 'hot_norm'] *= category_damping
+
+        suppressed_count = len(scored_df[routine_mask & ~breaking_mask])
+        downweighted_count = len(scored_df[category_mask & ~routine_mask])
+        if suppressed_count > 0 or downweighted_count > 0:
+            log.info(f"Suppressed {suppressed_count} routine articles and down-weighted {downweighted_count} category articles.")
+
+        log.info("Topic suppression and down-weighting logic applied.")
+        # --- 双重话题抑制逻辑结束 ---
+        
         # 第三步：更新最终总分计算公式
         log.info("计算最终综合分数 (final_score_v2)...")
         
@@ -228,6 +278,26 @@ class AdvancedScorer:
         
         log.info(f"✅ V2打分完成！最高分: {scored_df['final_score_v2'].max():.4f}")
         
+        # --- 开始添加抑制效果统计日志 ---
+        log.info("="*50)
+        log.info("Dual Topic Suppression & Down-weighting Stats:")
+        
+        total_articles = len(scored_df)
+        suppressed_count = scored_df['is_suppressed'].sum()
+        downweighted_count = scored_df['is_downweighted'].sum()
+        breaking_in_routine_count = scored_df[scored_df['is_routine_topic'] & scored_df['is_breaking_news']].shape[0]
+
+        # 计算百分比，避免除以零错误
+        suppressed_pct = (suppressed_count / total_articles * 100) if total_articles > 0 else 0
+        downweighted_pct = (downweighted_count / total_articles * 100) if total_articles > 0 else 0
+        
+        log.info(f"  - Total Articles Processed: {total_articles}")
+        log.info(f"  - Routine Topics Suppressed: {suppressed_count} ({suppressed_pct:.2f}%)")
+        log.info(f"  - Category Topics Down-weighted: {downweighted_count} ({downweighted_pct:.2f}%)")
+        log.info(f"  - Breaking News Exempted from Suppression: {breaking_in_routine_count}")
+        log.info("="*50)
+        # --- 结束添加抑制效果统计日志 ---
+
         return scored_df
     
     def _safe_minmax_normalize(self, series: pd.Series) -> pd.Series:

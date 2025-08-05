@@ -96,8 +96,9 @@ def generate_summary_report_to_json_file(**context):
     
     # 3. 将JSON对象写入带时间戳的文件
     output_dir = "/opt/airflow/exports"
-    # 文件名现在也包含逻辑日期，更清晰
-    filename = f"summary_{logical_date}_{now_utc.strftime('%H-%M-%S')}.json"
+    # 文件名包含逻辑日期和执行时间，区分调度和手动运行
+    run_type = "scheduled" if context.get('dag_run').run_id.startswith('scheduled') else "manual"
+    filename = f"summary_{logical_date}_{run_type}_{now_utc.strftime('%H-%M-%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     log.info(f"💾 正在将JSON报告写入到文件: {output_path}")
