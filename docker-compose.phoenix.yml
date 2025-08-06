@@ -103,7 +103,7 @@ services:
       - ./utils:/opt/airflow/utils
       - ./logs:/opt/airflow/logs
       - phoenix_logs:/opt/airflow/logs
-      - ../exports:/opt/airflow/exports
+      - ./exports:/opt/airflow/exports
     networks:
       - phoenix_network
 
@@ -132,7 +132,7 @@ services:
       - ./utils:/opt/airflow/utils
       - ./logs:/opt/airflow/logs
       - phoenix_logs:/opt/airflow/logs
-      - ../exports:/opt/airflow/exports
+      - ./exports:/opt/airflow/exports
     command: ["airflow", "scheduler"]
     networks:
       - phoenix_network
