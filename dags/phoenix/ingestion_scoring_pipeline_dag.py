@@ -353,8 +353,8 @@ def process_and_score_articles():
 dag = DAG(
     'ingestion_scoring_pipeline',
     default_args=default_args,
-    description='高频运行的新闻抓取与高级打分流水线',
-    schedule_interval='0 2,9,14 * * *',  # 北京时间10:00, 17:00, 22:00 (UTC 2:00, 9:00, 14:00)
+    description='每日运行的新闻抓取与高级打分流水线',
+    schedule_interval='0 14 * * *',  # 每天北京时间22:00运行 (UTC 14:00)
     catchup=False,
     tags=['phoenix', 'ingestion', 'scoring'],
 )
