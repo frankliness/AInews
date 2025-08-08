@@ -1,5 +1,7 @@
 # 新闻日志汇总功能
 
+> 重要：自 v2.4.1 起，日志汇总仅作为【备用数据流/调试用途】，不再作为生产产出路径。生产摘要请使用 `summary_generation_dag`（输出到 `dev/exports/`）。`parse_summary_logs` DAG 已下线；保留的 `aggregate_daily_logs` 仅用于调试/审计。
+
 ## 📋 架构说明
 
 **日志汇总功能在简化架构中作为备用数据流保留，用于监控和调试目的。**

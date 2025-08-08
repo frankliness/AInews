@@ -148,6 +148,19 @@ docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver airflow dags
 - **配置优化**: 改进Docker卷挂载配置
 - **文档完善**: 更新系统优化记录
 
+## 🔁 已下线/兼容性变更（文档补充）
+
+为避免歧义，v2.4.1 起对以下功能与DAG进行了下线或角色调整：
+
+- fetch_twitter（已下线）：平台限制与信噪比原因；暂不提供替代。
+- fetch_news（已下线）：旧抓取与评分流程被 `ingestion_scoring_pipeline` 取代。
+- make_daily_cards（已下线）：由 `summary_generation_dag` 生成标准JSON摘要文件替代。
+- parse_summary_logs（已下线）：与数据库直读重复；日志汇总备用DAG `aggregate_daily_logs` 仅用于调试/审计，不参与生产产出。
+
+不兼容变更影响面：
+- 任何依赖旧DAG名称的自动化脚本需切换到新DAG名称/调用方式。
+- 汇总文件路径统一为 `dev/exports/`（容器内 `/opt/airflow/exports`）。
+
 ---
 
 **发布日期**: 2025-08-05  
