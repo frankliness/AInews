@@ -211,3 +211,47 @@ Password	phoenix_pass
         "4c0d66ce-07b2-457b-97dc-a08297e61bed"
     ]
 }
+
+
+
+第一步：预览将要删除的数据（安全检查）
+请先复制并执行以下 SQL 命令。这个命令不会删除任何数据，只会把满足条件（在北京时间2025年8月5日采集）的记录全部列出来给您看。
+
+SQL
+
+SELECT *
+FROM public.raw_events
+WHERE
+    collected_at::date = '2025-08-05';
+执行后，请检查返回的结果是否确实是您想要删除的、collected_at 日期为 2025年8月5日 的所有记录。
+
+第二步：执行删除操作
+在您确认第一步预览的数据无误后，再执行下面的 DELETE 命令来真正地删除这些数据。
+
+SQL
+
+DELETE
+FROM public.raw_events
+WHERE
+    collected_at::date = '2025-08-05';
+
+
+[
+  "http://en.wikipedia.org/wiki/Gaza_Strip",
+  "http://en.wikipedia.org/wiki/Israel–Hamas_war",
+  "http://en.wikipedia.org/wiki/Russo-Ukrainian_War",
+  "http://en.wikipedia.org/wiki/Russian_invasion_of_Ukraine",
+  "http://en.wikipedia.org/wiki/Russia–Ukraine_border",
+  "http://en.wikipedia.org/wiki/Russia–Ukraine_war",
+  "http://en.wikipedia.org/wiki/Russia–Ukraine_relations",
+  "http://en.wikipedia.org/wiki/Gaza_City", 
+  "http://en.wikipedia.org/wiki/Hamas"
+  "	http://en.wikipedia.org/wiki/Fatah–Hamas_conflict"
+  "http://en.wikipedia.org/wiki/Israeli–Palestinian_conflict"
+  "http://en.wikipedia.org/wiki/West_Bank"
+  "http://en.wikipedia.org/wiki/Palestinians"
+  "http://en.wikipedia.org/wiki/Palestine"
+  "http://en.wikipedia.org/wiki/Palestinian_nationalism"
+]
+
+
