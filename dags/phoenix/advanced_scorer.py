@@ -11,7 +11,6 @@ import pytz
 import numpy as np
 import pandas as pd
 from typing import Dict, Any
-from sklearn.preprocessing import MinMaxScaler
 from airflow.models import Variable
 
 log = logging.getLogger(__name__)
@@ -208,9 +207,17 @@ class AdvancedScorer:
         # --- 开始执行双重话题抑制逻辑 (高性能向量化版) ---
         log.info("Applying dual topic suppression & down-weighting logic using vectorized operations...")
 
-        # 1. 从 Airflow Variables 读取所有抑制规则
-        routine_topic_uris = set(Variable.get("ainews_routine_topic_uris", deserialize_json=True, default_var=[]))
-        downweight_category_uris = set(Variable.get("ainews_downweight_category_uris", deserialize_json=True, default_var=[]))
+        # 1. 从 Airflow Variables 读取所有抑制规则（健壮性处理，防止 None 可迭代错误）
+        raw_routine = Variable.get("ainews_routine_topic_uris", deserialize_json=True, default_var=[])
+        raw_category = Variable.get("ainews_downweight_category_uris", deserialize_json=True, default_var=[])
+
+        if raw_routine is None:
+            raw_routine = []
+        if raw_category is None:
+            raw_category = []
+
+        routine_topic_uris = set(raw_routine) if isinstance(raw_routine, (list, tuple, set)) else set()
+        downweight_category_uris = set(raw_category) if isinstance(raw_category, (list, tuple, set)) else set()
 
         routine_damping = float(Variable.get("ainews_routine_topic_damping_factor", default_var=0.3))
         category_damping = float(Variable.get("ainews_category_damping_factor", default_var=0.5))
@@ -218,8 +225,17 @@ class AdvancedScorer:
         freshness_threshold = float(Variable.get("ainews_freshness_threshold_for_breaking", default_var=0.8))
 
         # 2. 创建布尔掩码 (Boolean Masks) 来识别不同类型的文章
-        #    首先，将 concepts 列中的 URI 列表转换为集合，以便快速进行交集检查
-        concept_sets = scored_df['concepts'].apply(lambda concepts_list: {concept['uri'] for concept in concepts_list})
+        #    首先，将 concepts 列中的 URI 列表转换为集合，以便快速进行交集检查（对 None 和非列表安全）
+        def _extract_uri_set(concepts_list):
+            if not concepts_list or not isinstance(concepts_list, list):
+                return set()
+            uris = []
+            for concept in concepts_list:
+                if isinstance(concept, dict) and 'uri' in concept:
+                    uris.append(concept['uri'])
+            return set(uris)
+
+        concept_sets = scored_df['concepts'].apply(_extract_uri_set)
 
         # 掩码 A: 标记所有属于"常规话题"的文章
         routine_mask = concept_sets.apply(lambda s: not s.isdisjoint(routine_topic_uris))

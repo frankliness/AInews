@@ -79,6 +79,18 @@ def fetch_data_with_monitoring():
     requests_before = client.er.getRemainingAvailableRequests()
     log.info(f"API requests remaining before run: {requests_before}")
 
+    # 增强的配额检查
+    quota_status = client.check_api_quota()
+    if not quota_status["can_proceed"]:
+        error_msg = f"API quota check failed: {quota_status.get('error', 'Unknown error')}"
+        log.error(error_msg)
+        raise Exception(error_msg)
+    
+    if quota_status["status"] == "low":
+        log.warning(f"API quota is low: {quota_status.get('warning', '')}")
+    
+    log.info(f"Quota status: {quota_status['status']} - {quota_status.get('info', quota_status.get('warning', ''))}")
+
     # 从 Airflow Variables 获取动态参数
     articles_per_event = int(Variable.get("ainews_articles_per_event", default_var=1))
     
@@ -161,6 +173,17 @@ def fetch_data_with_monitoring():
     consumed = requests_before - requests_after
     log.info(f"✅ API requests consumed in this run: {consumed}")
 
+    # 配额监控和告警
+    if requests_after != -1:  # 只有在能获取配额信息时才进行监控
+        if requests_after <= 5:
+            log.error(f"⚠️ CRITICAL: API quota critically low after run: {requests_after}")
+        elif requests_after <= 20:
+            log.warning(f"⚠️ WARNING: API quota low after run: {requests_after}")
+        else:
+            log.info(f"✅ API quota healthy after run: {requests_after}")
+    else:
+        log.warning("⚠️ Unable to determine remaining quota after run")
+
 def update_trending_concepts():
     """
     更新概念热度榜 - 流水线的第一个步骤
@@ -172,7 +195,6 @@ def update_trending_concepts():
     
     # 使用多key管理系统
     client = NewsApiClient()
-    er = client.er
     
     try:
         # 调用GetTrendingConcepts API获取最新的概念热度榜
@@ -181,7 +203,8 @@ def update_trending_concepts():
             count=200,          # 建议获取比100稍多的数量，以增加匹配概率
             conceptType=["person", "org", "loc"]  # 我们关心的三种实体类型
         )
-        result = client._execute_api_call(er.execQuery, query)
+        # 修复：传递函数对象和参数，让 _execute_api_call 内部处理密钥轮换
+        result = client._execute_api_call(lambda: client.er.execQuery(query))
         
         # 处理API响应，构建概念热度字典
         # EventRegistry API返回的是列表格式

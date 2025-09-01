@@ -27,7 +27,13 @@ class NewsApiClient:
         and selecting one to start with.
         """
         keys_json_str = Variable.get("ainews_eventregistry_apikeys", default_var='{"keys":[]}')
-        self.api_keys = json.loads(keys_json_str).get("keys", [])
+        # 读取并标准化密钥列表：去除空白、过滤空值
+        raw_keys = json.loads(keys_json_str).get("keys", [])
+        self.api_keys = [
+            k.strip() for k in raw_keys
+            if isinstance(k, str) and k.strip()
+        ]
+        log.info(f"Loaded {len(self.api_keys)} API keys from Airflow Variable")
         if not self.api_keys:
             raise ValueError("No EventRegistry API keys found in Airflow Variable 'ainews_eventregistry_apikeys'.")
         
@@ -40,8 +46,13 @@ class NewsApiClient:
     def _initialize_er_client(self):
         """Initializes the EventRegistry client with the current key."""
         current_key = self.api_keys[self.current_key_index]
-        log.info(f"Initializing EventRegistry client with key index: {self.current_key_index}")
-        self.er = EventRegistry(apiKey=current_key, allowUseOfArchive=False)
+        masked = (current_key[:8] + "...") if isinstance(current_key, str) and len(current_key) >= 8 else "<invalid>"
+        log.info(
+            f"Initializing EventRegistry client with key index: {self.current_key_index} "
+            f"(len={len(current_key) if isinstance(current_key, str) else 'n/a'}, key~{masked})"
+        )
+        # 强制使用 HTTPS 主机，避免 http 导致的认证问题
+        self.er = EventRegistry(host="https://eventregistry.org", apiKey=current_key, allowUseOfArchive=False)
 
     def _rotate_key(self):
         """Rotates to the next API key in the list."""
@@ -63,13 +74,19 @@ class NewsApiClient:
                 # 执行实际的API调用
                 return func(*args, **kwargs)
             except Exception as e:
-                # 检查错误信息是否与配额相关
+                # 检查错误信息是否与配额相关或认证失败
                 error_message = str(e).lower()
                 if ("daily access quota" in error_message or 
                     "not valid" in error_message or 
                     "quota" in error_message or
-                    "not recognized as a valid key" in error_message):
-                    log.info(f"API Key at index {self.current_key_index} failed due to quota/validation error: {e}")
+                    "not recognized as a valid key" in error_message or
+                    "used all available tokens for unsubscribed users" in error_message or
+                    "subscribe to a paid plan" in error_message or
+                    "user is not logged in" in error_message or
+                    "not logged in" in error_message or
+                    "authentication" in error_message or
+                    "login" in error_message):
+                    log.warning(f"API Key at index {self.current_key_index} failed due to quota/validation error: {e}")
                     self._rotate_key()
                     # 继续下一次循环，使用新的key重试
                     continue 
@@ -188,3 +205,61 @@ class NewsApiClient:
         else:
             log.warning(f"No articles found for event {event_uri}")
             return []
+
+    def check_api_quota(self) -> dict:
+        """
+        检查API配额状态，返回详细的配额信息
+        
+        Returns:
+            dict: 包含配额信息的字典
+        """
+        try:
+            remaining = self.er.getRemainingAvailableRequests()
+            log.info(f"Current API quota remaining: {remaining}")
+            
+            # 如果返回 -1，表示无法获取配额信息或配额未知
+            if remaining == -1:
+                log.warning("Unable to determine API quota status. Proceeding with caution.")
+                return {
+                    "remaining": -1,
+                    "status": "unknown",
+                    "can_proceed": True,  # 允许继续，但需要监控
+                    "warning": "Quota status unknown"
+                }
+            
+            # 如果配额为0，表示已耗尽
+            if remaining == 0:
+                log.error("API quota exhausted. Cannot proceed.")
+                return {
+                    "remaining": 0,
+                    "status": "exhausted",
+                    "can_proceed": False,
+                    "error": "Quota exhausted"
+                }
+            
+            # 如果配额很低，发出警告
+            if remaining <= 10:
+                log.warning(f"API quota is low: {remaining}. Consider reducing request volume.")
+                return {
+                    "remaining": remaining,
+                    "status": "low",
+                    "can_proceed": True,
+                    "warning": f"Low quota: {remaining}"
+                }
+            
+            # 配额充足
+            return {
+                "remaining": remaining,
+                "status": "sufficient",
+                "can_proceed": True,
+                "info": f"Quota sufficient: {remaining}"
+            }
+            
+        except Exception as e:
+            log.error(f"Error checking API quota: {e}")
+            return {
+                "remaining": -1,
+                "status": "error",
+                "can_proceed": False,
+                "error": str(e)
+            }

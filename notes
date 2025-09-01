@@ -204,13 +204,7 @@ Password	phoenix_pass
 登录 Airflow UI
 导航到 "Admin" -> "Variables"
 创建变量 ainews_eventregistry_apikeys，值为 JSON 格式：
-{
-    "keys": [
-        "b03b250a-97ec-4dd0-905e-a038eb1a73e5",
-        "b759aed1-f268-405b-90f9-03966227e0bd",
-        "4c0d66ce-07b2-457b-97dc-a08297e61bed"
-    ]
-}
+
 
 
 
@@ -254,4 +248,10 @@ WHERE
   "http://en.wikipedia.org/wiki/Palestinian_nationalism"
 ]
 
-
+重启 Airflow 容器，清掉 Python 模块缓存，确保加载新代码
+重启 webserver 与 scheduler：
+docker-compose -f docker-compose.phoenix.yml restart phoenix-webserver phoenix-scheduler
+如仍缓存旧代码，请重建镜像并启动：
+docker-compose -f docker-compose.phoenix.yml build --no-cache phoenix-webserver phoenix-scheduler
+docker-compose -f docker-compose.
+.yml up -d phoenix-webserver phoenix-scheduler
