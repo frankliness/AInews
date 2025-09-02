@@ -87,7 +87,7 @@ exports/ 目录
 docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
   airflow dags trigger ingestion_scoring_pipeline
 
-# 2) 生成每日摘要JSON（输出到 dev/exports/）
+# 2) 生成每日摘要JSON（输出到 exports/）
 docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
   airflow dags trigger summary_generation_dag
 ```
@@ -126,17 +126,49 @@ WHERE final_score_v2 IS NOT NULL
 ```bash
 # 检查数据库连接
 # Phoenix
-docker compose -f docker-compose.phoenix.yml exec postgres-phoenix \
+docker-compose -f docker-compose.phoenix.yml exec postgres-phoenix \
   psql -U phoenix_user -d phoenix_db -c "SELECT version();"
 ```
 
-### 2. EventRegistry API配置
+### 2. EventRegistry API配置（通过 Airflow Variables）
 ```bash
-# 设置API Key
-export EVENTREGISTRY_APIKEY=你的API密钥
+# 设置 EventRegistry 多密钥池（JSON 字符串）
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_eventregistry_apikeys '{"keys": ["your_api_key_1", "your_api_key_2"]}'
+
+# （可选）启用信源白名单
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ENABLE_SOURCE_WHITELIST True
+
+# （可选）设置可信信源列表
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set TRUSTED_SOURCES_WHITELIST '["Reuters", "Associated Press", "BBC News"]'
 ```
 
-### 3. 依赖安装
+### 3. 评分与抑制参数（可选）
+```bash
+# 评分权重参数
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_weight_hot 0.35
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_weight_authority 0.25
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_weight_concept 0.20
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_weight_freshness 0.15
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_weight_sentiment 0.05
+
+# 话题抑制参数
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_routine_topic_damping_factor 0.3
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_category_damping_factor 0.5
+docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
+  airflow variables set ainews_freshness_threshold_for_breaking 0.8
+```
+
+### 4. 依赖安装
 ```bash
 #（开发环境）
 docker-compose -f docker-compose.phoenix.yml exec phoenix-webserver \
