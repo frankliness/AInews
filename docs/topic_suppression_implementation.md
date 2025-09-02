@@ -111,50 +111,23 @@ df.loc[category_mask & ~routine_mask, 'hot_norm'] *= category_damping
 - 使用就地修改（in-place modification）
 - 合理的数据类型选择
 
-## 测试验证
-
-### 测试脚本
-
-提供了完整的测试脚本 `scripts/test_topic_suppression.py`，包含：
-
-- 模拟测试数据生成
-- 抑制逻辑验证
-- 性能基准测试
-- 结果统计分析
-
-### 运行测试
-
-```bash
-cd scripts
-python test_topic_suppression.py
-```
-
 ## 部署说明
 
-### 1. 配置Airflow Variables
+### 配置 Airflow Variables
 
-在Airflow UI中配置所有必需的变量：
+在 Airflow UI 中配置必需的变量：
 
-1. 进入 "Admin" -> "Variables"
-2. 创建或更新上述7个变量
-3. 确保JSON格式正确
+1. 进入 "Admin" → "Variables"
+2. 创建或更新上述配置变量
+3. 确保 JSON 格式正确
 
-### 2. 验证实现
+### 验证配置
 
-运行测试脚本验证功能：
+配置完成后，可以通过以下方式验证：
 
-```bash
-python scripts/test_topic_suppression.py
-```
-
-### 3. 监控部署
-
-部署监控查询到数据库：
-
-```sql
--- 执行 monitoring_queries.sql 中的相关查询
--- 重点关注第10节的"双重话题抑制监控"部分
-```
+1. 检查 Airflow Variables 是否正确设置
+2. 运行 DAG 查看日志中的抑制效果
+3. 查询数据库中的监控字段
 
 ## 效果预期
 
@@ -170,22 +143,6 @@ python scripts/test_topic_suppression.py
 - 改善用户体验
 - 增强系统智能化水平
 
-## 维护建议
-
-### 定期调整
-
-1. **监控抑制效果**：定期查看监控指标
-2. **调整抑制强度**：根据效果调整damping_factor
-3. **更新话题列表**：根据时事变化更新URI列表
-4. **优化阈值设置**：根据数据表现调整freshness_threshold
-
-### 故障排查
-
-1. **检查配置**：验证Airflow Variables设置
-2. **查看日志**：检查抑制逻辑的执行日志
-3. **分析数据**：使用监控查询分析效果
-4. **性能监控**：关注系统性能指标
-
 ## 总结
 
-双重话题抑制功能通过智能的向量化算法实现了高效的新闻筛选，在保证性能的同时显著提升了选题质量。该功能为AInews系统构建了一个逻辑严密、性能卓越且易于监控的"编辑大脑"，使其产出的选题聚焦度达到新的高度。 
+双重话题抑制功能通过智能的向量化算法实现了高效的新闻筛选，在保证性能的同时显著提升了选题质量。该功能为 Phoenix 系统构建了一个逻辑严密、性能卓越且易于监控的"编辑大脑"，使其产出的选题聚焦度达到新的高度。 

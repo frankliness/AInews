@@ -1,24 +1,8 @@
-# pgAdmin 登录指南
+# Phoenix 数据库管理指南
 
-本文档记录了系统中所有pgAdmin实例的登录信息，方便快速访问数据库管理界面。
+本文档提供 Phoenix 新闻系统的数据库访问和管理信息。
 
-## V1 系统 (旧版本)
-
-### pgAdmin 访问信息
-- **URL**: http://localhost:5050
-- **邮箱**: 从环境变量读取 (PGADMIN_DEFAULT_EMAIL)
-- **密码**: 从环境变量读取 (PGADMIN_DEFAULT_PASSWORD)
-
-### 数据库连接参数
-- **主机**: host.docker.internal
-- **端口**: 5432
-- **数据库**: ainews
-- **用户名**: airflow
-- **密码**: airflow_pass
-
----
-
-## Phoenix V2 系统 (新版本)
+## 🗄️ 数据库管理界面
 
 ### pgAdmin 访问信息
 - **URL**: http://localhost:5051
@@ -26,108 +10,94 @@
 - **密码**: phoenix123
 
 ### 数据库连接参数
-- **主机**: host.docker.internal
-- **端口**: 5434
+- **主机**: postgres-phoenix
+- **端口**: 5432
 - **数据库**: phoenix_db
 - **用户名**: phoenix_user
 - **密码**: phoenix_pass
 
----
+## 🔍 常用数据库操作
 
-## 常用数据库操作命令
-
-### 查看最新数据
+### 查看最新新闻数据
 ```bash
-# V1 系统
-docker compose exec postgres \
-  psql -U airflow -d ainews \
-  -c "SELECT id, source, left(title,50) AS title_snip, published_at
-      FROM raw_events
-      ORDER BY id DESC
-      LIMIT 3;"
-
-# V2 系统
-docker compose exec postgres-phoenix \
+docker compose -f docker-compose.phoenix.yml exec postgres-phoenix \
   psql -U phoenix_user -d phoenix_db \
-  -c "SELECT id, source, left(title,50) AS title_snip, published_at
-      FROM raw_events
-      ORDER BY id DESC
-      LIMIT 3;"
+  -c "SELECT id, left(title,50) AS title_snippet, published_at, final_score_v2
+      FROM raw_events 
+      WHERE final_score_v2 IS NOT NULL
+      ORDER BY final_score_v2 DESC 
+      LIMIT 5;"
 ```
 
-### 查看摘要统计
+### 查看话题抑制效果
 ```bash
-# V1 系统
-docker compose exec postgres \
-  psql -U airflow -d ainews \
-  -c "SELECT COUNT(*) FROM summaries;"
-
-# V2 系统
-docker compose exec postgres-phoenix \
+docker compose -f docker-compose.phoenix.yml exec postgres-phoenix \
   psql -U phoenix_user -d phoenix_db \
-  -c "SELECT COUNT(*) FROM summaries;"
+  -c "SELECT 
+        COUNT(*) as total_articles,
+        COUNT(CASE WHEN is_suppressed THEN 1 END) as suppressed_count,
+        COUNT(CASE WHEN is_downweighted THEN 1 END) as downweighted_count,
+        ROUND(COUNT(CASE WHEN is_suppressed THEN 1 END) * 100.0 / COUNT(*), 2) as suppression_rate
+      FROM raw_events 
+      WHERE published_at >= NOW() - INTERVAL '24 HOURS';"
 ```
 
-### 清空摘要表（重新处理所有事件）
+### 查看概念热度数据
 ```bash
-# V1 系统
-docker compose exec postgres \
-  psql -U airflow -d ainews \
-  -c "TRUNCATE TABLE summaries RESTART IDENTITY;"
-
-# V2 系统
-docker compose exec postgres-phoenix \
+docker compose -f docker-compose.phoenix.yml exec postgres-phoenix \
   psql -U phoenix_user -d phoenix_db \
-  -c "TRUNCATE TABLE summaries RESTART IDENTITY;"
+  -c "SELECT uri, score, updated_at 
+      FROM trending_concepts 
+      ORDER BY score DESC 
+      LIMIT 10;"
 ```
 
----
+## 🛠️ 故障排除
 
-## 故障排除
-
-### 如果无法访问pgAdmin
-1. 检查Docker容器是否运行：
-   ```bash
-   docker compose ps
-   ```
-
-2. 重启pgAdmin服务：
-   ```bash
-   # V1 系统
-   docker compose restart pgadmin
-   
-   # V2 系统
-   docker compose -f docker-compose.phoenix.yml restart pgadmin-phoenix
-   ```
-
-3. 查看pgAdmin日志：
-   ```bash
-   # V1 系统
-   docker compose logs pgadmin
-   
-   # V2 系统
-   docker compose -f docker-compose.phoenix.yml logs pgadmin-phoenix
-   ```
-
-### 备份pgAdmin配置
+### 检查服务状态
 ```bash
-# 查看卷是否存在
-docker volume ls | grep pgadmin-data
+# 查看所有容器状态
+docker compose -f docker-compose.phoenix.yml ps
 
-# 备份pgAdmin配置
-docker run --rm -v pgadmin-data:/data alpine \
-  tar -czf - -C /data . > pgadmin_backup_$(date +%F).tgz
+# 检查数据库连接
+docker compose -f docker-compose.phoenix.yml exec postgres-phoenix \
+  psql -U phoenix_user -d phoenix_db -c "SELECT version();"
 ```
 
+### 重启服务
+```bash
+# 重启 pgAdmin
+docker compose -f docker-compose.phoenix.yml restart pgadmin-phoenix
+
+# 重启数据库
+docker compose -f docker-compose.phoenix.yml restart postgres-phoenix
+```
+
+### 查看日志
+```bash
+# 查看 pgAdmin 日志
+docker compose -f docker-compose.phoenix.yml logs pgadmin-phoenix
+
+# 查看数据库日志
+docker compose -f docker-compose.phoenix.yml logs postgres-phoenix
+```
+
+## 📊 数据表结构
+
+### raw_events 表（新闻事件主表）
+- **id**: 文章唯一标识
+- **title**: 文章标题
+- **body**: 文章内容
+- **published_at**: 发布时间
+- **final_score_v2**: 综合评分
+- **is_suppressed**: 是否被抑制
+- **is_downweighted**: 是否被降权
+
+### trending_concepts 表（概念热度表）
+- **uri**: 概念URI
+- **score**: 热度分数
+- **updated_at**: 更新时间
+
 ---
 
-## 注意事项
-
-1. **端口冲突**: V1系统使用端口5050，V2系统使用端口5051，避免冲突
-2. **数据库端口**: V1系统使用5432，V2系统使用5434
-3. **网络隔离**: 两个系统使用不同的Docker网络，互不影响
-4. **数据持久化**: 两个系统的数据分别存储在不同的Docker卷中
-
----
-
-*最后更新: $(date)* 
+*最后更新: 2025年9月2日* 

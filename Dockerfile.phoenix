@@ -26,7 +26,6 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 # 复制项目文件（白名单式 COPY）
 COPY dags/ /opt/airflow/dags/
 COPY scraper/ /opt/airflow/scraper/
-COPY config/ /opt/airflow/config/
 COPY utils/ /opt/airflow/utils/
 
 # 清理可能遗留的 .pyc / __pycache__ 文件
