@@ -60,6 +60,10 @@ services:
       - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - PYTHONPATH=/opt/airflow:/opt/airflow/dags/phoenix
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/config/ainews-468705-2829ec9f5db8.json
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./config:/opt/airflow/config
     command:
       - bash
       - -c
@@ -88,20 +92,27 @@ services:
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=Asia/Shanghai
+      - AIRFLOW__WEBSERVER__SECRET_KEY=VfY8F4eqSaemRren1VYKvy6gxXiLKf7RaFA8n-2phnJfhEFduEdwYgwvt-etjz7NvqcTyeytdNJ2_VnjitgRkA
       - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - PYTHONPATH=/opt/airflow:/opt/airflow/dags/phoenix
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/config/ainews-468705-2829ec9f5db8.json
+      - TZ=Asia/Shanghai
     ports:
       - "8082:8080"  # 使用端口 8082 避免冲突
     volumes:
-      - ./dags/phoenix:/opt/airflow/dags/phoenix
+
+      - ./dags:/opt/airflow/dags
       - ./config:/opt/airflow/config
+      - ./configs:/opt/airflow/configs
       - ./scraper:/opt/airflow/scraper
       - ./sql:/opt/airflow/sql
       - ./utils:/opt/airflow/utils
       - ./logs:/opt/airflow/logs
       - phoenix_logs:/opt/airflow/logs
       - ./exports:/opt/airflow/exports
+      - ./gemini_outputs:/opt/airflow/gemini_outputs
     networks:
       - phoenix_network
 
@@ -118,18 +129,24 @@ services:
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=Asia/Shanghai
+      - AIRFLOW__WEBSERVER__SECRET_KEY=VfY8F4eqSaemRren1VYKvy6gxXiLKf7RaFA8n-2phnJfhEFduEdwYgwvt-etjz7NvqcTyeytdNJ2_VnjitgRkA
       - AIRFLOW__CELERY__BROKER_URL=redis://redis-phoenix:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://phoenix_user:phoenix_pass@postgres-phoenix:5432/phoenix_db
       - PYTHONPATH=/opt/airflow:/opt/airflow/dags/phoenix
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/config/ainews-468705-2829ec9f5db8.json
+      - TZ=Asia/Shanghai
     volumes:
-      - ./dags/phoenix:/opt/airflow/dags/phoenix
+      - ./dags:/opt/airflow/dags
       - ./config:/opt/airflow/config
+      - ./configs:/opt/airflow/configs
       - ./scraper:/opt/airflow/scraper
       - ./sql:/opt/airflow/sql
       - ./utils:/opt/airflow/utils
       - ./logs:/opt/airflow/logs
       - phoenix_logs:/opt/airflow/logs
       - ./exports:/opt/airflow/exports
+      - ./gemini_outputs:/opt/airflow/gemini_outputs
     command: ["airflow", "scheduler"]
     networks:
       - phoenix_network

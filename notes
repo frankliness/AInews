@@ -253,5 +253,1487 @@ WHERE
 docker-compose -f docker-compose.phoenix.yml restart phoenix-webserver phoenix-scheduler
 如仍缓存旧代码，请重建镜像并启动：
 docker-compose -f docker-compose.phoenix.yml build --no-cache phoenix-webserver phoenix-scheduler
-docker-compose -f docker-compose.
-.yml up -d phoenix-webserver phoenix-scheduler
+docker-compose -f docker-compose.phoenix.yml up -d phoenix-webserver phoenix-scheduler
+
+# ====================== Milestone 2: Phoenix → Gemini 升级脚手架搭建 ======================
+
+## 任务理解与执行方案详细阐述
+
+### 1. 任务目标
+为 Phoenix → Gemini 升级搭建完整的脚手架，包括：
+- Gemini 专属目录结构
+- 静态配置文件（prompts/schema/filters）
+- 占位符模块（validators/renderers）
+- 统一配置读取工具
+- 验证脚本
+
+### 2. 设计原则
+- **分离原则**：Gemini 目录与 Phoenix 主链完全分离
+- **静态化**：所有模板/Schema/词表均为静态文件，避免硬编码
+- **配置化**：支持 Airflow Variables 和环境变量配置
+- **向后兼容**：不影响现有 Phoenix 流程
+
+### 3. 执行方案逐点说明
+
+#### 3.1 目录结构创建
+```
+dags/gemini/
+├── __init__.py
+├── prompts/
+│   ├── system_instruction.md
+│   ├── response_schema.json
+│   ├── select_top_schema.json
+│   └── md_template.md.j2
+├── validators.py
+├── renderers.py
+└── config_reader.py
+
+configs/filters/
+├── normal_conflict.json
+└── bang_words.json
+
+dev/
+└── verify_gemini_setup.py
+```
+
+#### 3.2 静态配置文件设计
+- **system_instruction.md**：AI 选题编辑手册，包含完整规则
+- **response_schema.json**：最终选题卡片的 JSON Schema
+- **select_top_schema.json**：第一阶段选 Top10 的 Schema
+- **md_template.md.j2**：Jinja2 模板，用于生成 Markdown 报告
+- **normal_conflict.json**：常态冲突词表
+- **bang_words.json**：爆点词表
+
+#### 3.3 占位符模块设计
+- **validators.py**：包含 `validate_cards()` 函数占位符
+- **renderers.py**：包含 `render_markdown()` 函数占位符
+- **config_reader.py**：统一配置读取工具，支持 Airflow Variables 和环境变量
+
+#### 3.4 Airflow Variables 配置
+需要配置 10 个 Airflow Variables：
+- 路径配置：phoenix_exports_dir, gemini_outputs_dir
+- 调度配置：gemini_dag_schedule, email_dag_schedule
+- 文件路径：gemini_system_instruction_path, gemini_response_schema_path 等
+- 过滤配置：filter_normal_conflict_path, filter_bang_words_path
+- 邮件配置：recipient_email_list
+
+#### 3.5 配置读取逻辑
+- 优先从 Airflow Variables 读取
+- 失败时从环境变量读取
+- 最后使用默认路径
+- 支持 JSON 和 Markdown 文件加载
+
+#### 3.6 验证机制
+- 检查所有必需文件是否存在
+- 验证 Airflow Variables 配置
+- 测试占位符模块导入
+- 确保配置读取功能正常
+
+### 4. 实现细节
+
+#### 4.1 文件内容设计
+- 所有配置文件使用标准格式（JSON/Markdown/Jinja2）
+- 内容基于实际业务需求设计
+- 确保文件格式正确，可被相应工具解析
+
+#### 4.2 路径管理
+- 使用绝对路径配置
+- 支持环境变量和 Airflow Variables 的灵活配置
+- 集中管理，便于维护
+
+#### 4.3 错误处理
+- 配置读取失败时的优雅降级
+- 文件不存在时的默认行为
+- 确保系统稳定性
+
+### 5. 验证标准
+- 目录结构与文件全部存在
+- config_reader.py 能正确读取文件
+- validators.py、renderers.py 可被正常导入
+- verify_gemini_setup.py 能运行并验证所有组件
+- Phoenix 主链运行不受影响
+
+## 变更的文件列表与关键代码段
+
+### 新建文件列表：
+1. `dags/gemini/__init__.py` - Gemini 包初始化
+2. `dags/gemini/prompts/system_instruction.md` - AI 选题编辑手册
+3. `dags/gemini/prompts/response_schema.json` - 响应 Schema 定义
+4. `dags/gemini/prompts/select_top_schema.json` - 选 Top Schema 定义
+5. `dags/gemini/prompts/md_template.md.j2` - Markdown 模板
+6. `configs/filters/normal_conflict.json` - 常态冲突词表
+7. `configs/filters/bang_words.json` - 爆点词表
+8. `dags/gemini/validators.py` - 验证器占位符
+9. `dags/gemini/renderers.py` - 渲染器占位符
+10. `dags/gemini/config_reader.py` - 配置读取工具
+11. `dev/verify_gemini_setup.py` - 验证脚本
+
+### 关键代码段预览：
+
+#### `dags/gemini/config_reader.py`
+```python
+from typing import Any
+import json, os
+
+def get_config_path(var_name: str, default_path: str) -> str:
+    """优先从 Airflow Variables 读取路径，失败时回退到默认路径。"""
+    try:
+        from airflow.models import Variable
+        return Variable.get(var_name, default_var=default_path)
+    except Exception:
+        return os.getenv(var_name.upper(), default_path)
+
+def load_json_config(path: str) -> Any:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def load_markdown_template(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+```
+
+#### `dags/gemini/validators.py`
+```python
+def validate_cards(cards: list[dict]) -> list[dict]:
+    """占位函数：未来实现字段校验与修复逻辑。当前直接返回原输入。"""
+    return cards
+```
+
+#### `dags/gemini/renderers.py`
+```python
+def render_markdown(cards: list[dict], template_path: str) -> str:
+    """占位函数：未来实现 Markdown 渲染逻辑。当前返回空字符串。"""
+    return ""
+```
+
+#### `dev/verify_gemini_setup.py`
+```python
+import os
+from dags.gemini import validators, renderers, config_reader
+
+def main():
+    print("Checking Gemini setup...")
+    
+    required_files = [
+        os.getenv("gemini_system_instruction_path"),
+        os.getenv("gemini_response_schema_path"),
+        os.getenv("gemini_select_top_schema_path"),
+        os.getenv("gemini_md_template_path"),
+        os.getenv("filter_normal_conflict_path"),
+        os.getenv("filter_bang_words_path"),
+    ]
+    
+    for f in required_files:
+        if not f or not os.path.exists(f):
+            print(f"❌ Missing file: {f}")
+        else:
+            print(f"✅ Found: {f}")
+    
+    try:
+        print("✅ validators:", validators.validate_cards([]))
+        print("✅ renderers:", renderers.render_markdown([], ""))
+        print("✅ config_reader OK")
+    except Exception as e:
+        print("❌ Import test failed:", e)
+
+if __name__ == "__main__":
+    main()
+```
+
+## 待确认后开始实施
+
+以上是详细的执行方案，已记录到 notes 文件中。请确认：
+
+1. **目录结构设计**是否符合要求？
+2. **文件内容设计**是否满足业务需求？
+3. **Airflow Variables 配置**是否完整？
+4. **实现方案**是否有遗漏或需要调整的地方？
+
+确认无误后，我将严格按照上述方案开始实施，确保：
+- 严格执行已确定的方案
+- 如遇问题不绕开，先与您确认
+- 确保现有 Phoenix 流程不受影响
+- 所有文件格式正确，可被正常使用
+
+请确认是否可以开始实施？
+
+# ====================== Milestone 3 修正说明 ======================
+
+## 修正要点
+
+### 一致部分（保持不变）
+- DAG ID：`gemini_card_generation_dag`
+- 调度时间：06:00 BJT（Airflow Variable: `gemini_dag_schedule`）
+- 任务链：`find_input → pre_filter → select_top10 → write_cards → validate_and_fix → render_markdown → save_metrics`
+- 输入/输出文件逻辑、文件命名规则、校验逻辑、渲染逻辑、metrics 保存机制
+- 复用的模块：`dags/phoenix/time_utils.py`、`dags/gemini/validators.py`、`dags/gemini/renderers.py`、`dags/gemini/config_reader.py`
+- 新增 Airflow Variables：`gemini_model_id`、`summary_truncate_chars`、`cards_topk`
+
+### 必须修改的地方
+
+#### 导入部分修正
+**❌ 错误写法（不要用）**：
+```python
+from dags.gemini.config_reader import get_gemini_config_paths, load_gemini_configs
+```
+
+**✅ 正确写法（按照方案选项 A）**：
+```python
+from dags.gemini.config_reader import (
+    get_config_path,
+    load_json_config,
+    load_markdown_template
+)
+```
+
+#### 调用方式修正
+**在 DAG 内直接调用这些工具函数**：
+```python
+# 获取配置路径
+schema_path = get_config_path("gemini_response_schema_path", "/opt/airflow/dags/gemini/prompts/response_schema.json")
+response_schema = load_json_config(schema_path)
+
+template_path = get_config_path("gemini_md_template_path", "/opt/airflow/dags/gemini/prompts/md_template.md.j2")
+template_str = load_markdown_template(template_path)
+
+# 其他配置示例
+system_instruction_path = get_config_path("gemini_system_instruction_path", "/opt/airflow/dags/gemini/prompts/system_instruction.md")
+system_instruction = load_markdown_template(system_instruction_path)
+
+select_top_schema_path = get_config_path("gemini_select_top_schema_path", "/opt/airflow/dags/gemini/prompts/select_top_schema.json")
+select_top_schema = load_json_config(select_top_schema_path)
+
+normal_conflict_path = get_config_path("filter_normal_conflict_path", "/opt/airflow/configs/filters/normal_conflict.json")
+normal_conflict_words = load_json_config(normal_conflict_path)
+
+bang_words_path = get_config_path("filter_bang_words_path", "/opt/airflow/configs/filters/bang_words.json")
+bang_words = load_json_config(bang_words_path)
+```
+
+#### 重要约束
+⚠️ **不要新增** `get_gemini_config_paths` 或 `load_gemini_configs` 函数到 `config_reader.py`
+⚠️ **保持文件原状**，只用现有的三个函数：`get_config_path`、`load_json_config`、`load_markdown_template`
+
+## 修正后的执行方案
+
+### 1. 文件结构设计
+
+**新建文件**：
+- `dags/gemini/gemini_card_generation_dag.py` - 主 DAG 文件
+
+**修改文件**：
+- `dags/gemini/validators.py` - 扩展校验逻辑
+- `dags/gemini/renderers.py` - 扩展渲染逻辑，支持 Jinja2
+
+**调用已有模块**：
+- `dags/phoenix/time_utils.py` - 逻辑日期计算
+- `dags/gemini/config_reader.py` - 配置读取（仅使用现有三个函数）
+
+### 2. 关键实现细节
+
+#### 2.1 导入部分
+```python
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from dags.phoenix.time_utils import prev_logical_date_str
+from dags.gemini.config_reader import (
+    get_config_path,
+    load_json_config,
+    load_markdown_template
+)
+from dags.gemini.validators import validate_cards
+from dags.gemini.renderers import render_markdown
+```
+
+#### 2.2 配置读取方式
+```python
+def load_all_configs():
+    """加载所有必需的配置文件"""
+    configs = {}
+    
+    # 系统指令
+    system_instruction_path = get_config_path(
+        "gemini_system_instruction_path", 
+        "/opt/airflow/dags/gemini/prompts/system_instruction.md"
+    )
+    configs['system_instruction'] = load_markdown_template(system_instruction_path)
+    
+    # 响应 Schema
+    response_schema_path = get_config_path(
+        "gemini_response_schema_path", 
+        "/opt/airflow/dags/gemini/prompts/response_schema.json"
+    )
+    configs['response_schema'] = load_json_config(response_schema_path)
+    
+    # 选 Top Schema
+    select_top_schema_path = get_config_path(
+        "gemini_select_top_schema_path", 
+        "/opt/airflow/dags/gemini/prompts/select_top_schema.json"
+    )
+    configs['select_top_schema'] = load_json_config(select_top_schema_path)
+    
+    # Markdown 模板
+    md_template_path = get_config_path(
+        "gemini_md_template_path", 
+        "/opt/airflow/dags/gemini/prompts/md_template.md.j2"
+    )
+    configs['md_template'] = load_markdown_template(md_template_path)
+    
+    # 过滤词表
+    normal_conflict_path = get_config_path(
+        "filter_normal_conflict_path", 
+        "/opt/airflow/configs/filters/normal_conflict.json"
+    )
+    configs['normal_conflict'] = load_json_config(normal_conflict_path)
+    
+    bang_words_path = get_config_path(
+        "filter_bang_words_path", 
+        "/opt/airflow/configs/filters/bang_words.json"
+    )
+    configs['bang_words'] = load_json_config(bang_words_path)
+    
+    return configs
+```
+
+#### 2.3 任务实现示例
+```python
+def pre_filter_articles(**context):
+    """预过滤文章"""
+    # 获取配置
+    normal_conflict_path = get_config_path(
+        "filter_normal_conflict_path", 
+        "/opt/airflow/configs/filters/normal_conflict.json"
+    )
+    normal_conflict_words = load_json_config(normal_conflict_path)
+    
+    bang_words_path = get_config_path(
+        "filter_bang_words_path", 
+        "/opt/airflow/configs/filters/bang_words.json"
+    )
+    bang_words = load_json_config(bang_words_path)
+    
+    # 实现过滤逻辑
+    # ...
+
+def select_top10(**context):
+    """选择 Top10 文章"""
+    # 获取配置
+    system_instruction_path = get_config_path(
+        "gemini_system_instruction_path", 
+        "/opt/airflow/dags/gemini/prompts/system_instruction.md"
+    )
+    system_instruction = load_markdown_template(system_instruction_path)
+    
+    select_top_schema_path = get_config_path(
+        "gemini_select_top_schema_path", 
+        "/opt/airflow/dags/gemini/prompts/select_top_schema.json"
+    )
+    select_top_schema = load_json_config(select_top_schema_path)
+    
+    # 实现选择逻辑
+    # ...
+
+def write_cards(**context):
+    """生成选题卡片"""
+    # 获取配置
+    response_schema_path = get_config_path(
+        "gemini_response_schema_path", 
+        "/opt/airflow/dags/gemini/prompts/response_schema.json"
+    )
+    response_schema = load_json_config(response_schema_path)
+    
+    # 实现卡片生成逻辑
+    # ...
+
+def render_markdown_report(**context):
+    """渲染 Markdown 报告"""
+    # 获取配置
+    md_template_path = get_config_path(
+        "gemini_md_template_path", 
+        "/opt/airflow/dags/gemini/prompts/md_template.md.j2"
+    )
+    template_str = load_markdown_template(md_template_path)
+    
+    # 实现渲染逻辑
+    # ...
+```
+
+### 3. 完整 DAG 结构
+
+```python
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from dags.phoenix.time_utils import prev_logical_date_str
+from dags.gemini.config_reader import (
+    get_config_path,
+    load_json_config,
+    load_markdown_template
+)
+from dags.gemini.validators import validate_cards
+from dags.gemini.renderers import render_markdown
+
+default_args = {
+    'owner': 'phoenix-team',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 1, 1),
+    'email_on_failure': True,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5)
+}
+
+dag = DAG(
+    'gemini_card_generation_dag',
+    default_args=default_args,
+    description='Gemini 选题卡片生成 DAG',
+    schedule_interval=Variable.get("gemini_dag_schedule", default_var="0 22 * * *"),  # 从 Airflow Variable 读取
+    catchup=False,
+    tags=['gemini', 'news', 'cards']
+)
+
+def find_input_file(**context):
+    """查找输入文件"""
+    # 获取可配置的日界
+    try:
+        from airflow.models import Variable
+        cutoff_hour = get_cutoff_hour(lambda k: Variable.get(k, default_var=None))
+    except Exception:
+        cutoff_hour = get_cutoff_hour()
+    
+    # 使用 time_utils 计算逻辑日期（支持可配置日界）
+    run_dt_utc = context['execution_date']
+    logical_date = prev_logical_date_str(run_dt_utc, cutoff_hour=cutoff_hour)
+    
+    # 查找 Phoenix 摘要文件
+    phoenix_exports_dir = get_config_path("phoenix_exports_dir", "/opt/airflow/exports")
+    # 支持回退机制
+    pass
+
+def pre_filter_articles(**context):
+    """预过滤文章"""
+    # 使用 get_config_path 和 load_json_config 加载过滤词表
+    # 实现时间窗、冲突词、去重、截断逻辑
+    pass
+
+def select_top10(**context):
+    """选择 Top10 文章"""
+    # 使用 get_config_path 和 load_markdown_template 加载系统指令
+    # 使用 get_config_path 和 load_json_config 加载 select_top_schema
+    # 调用 Gemini API
+    pass
+
+def write_cards(**context):
+    """生成选题卡片"""
+    # 使用 get_config_path 和 load_json_config 加载 response_schema
+    # 调用 Gemini API 生成完整卡片
+    pass
+
+def validate_and_fix(**context):
+    """校验和修复卡片"""
+    # 调用 validators.validate_cards
+    # 实现校验和修复逻辑
+    pass
+
+def render_markdown_report(**context):
+    """渲染 Markdown 报告"""
+    # 使用 get_config_path 和 load_markdown_template 加载模板
+    # 调用 renderers.render_markdown
+    pass
+
+def save_metrics(**context):
+    """保存运行指标"""
+    # 保存运行指标到 JSON 文件
+    pass
+
+# 任务定义
+find_input_task = PythonOperator(
+    task_id='find_input',
+    python_callable=find_input_file,
+    dag=dag
+)
+
+pre_filter_task = PythonOperator(
+    task_id='pre_filter',
+    python_callable=pre_filter_articles,
+    dag=dag
+)
+
+select_top10_task = PythonOperator(
+    task_id='select_top10',
+    python_callable=select_top10,
+    dag=dag
+)
+
+write_cards_task = PythonOperator(
+    task_id='write_cards',
+    python_callable=write_cards,
+    dag=dag
+)
+
+validate_task = PythonOperator(
+    task_id='validate_and_fix',
+    python_callable=validate_and_fix,
+    dag=dag
+)
+
+render_task = PythonOperator(
+    task_id='render_markdown',
+    python_callable=render_markdown_report,
+    dag=dag
+)
+
+save_metrics_task = PythonOperator(
+    task_id='save_metrics',
+    python_callable=save_metrics,
+    dag=dag
+)
+
+# 任务依赖
+find_input_task >> pre_filter_task >> select_top10_task >> write_cards_task >> validate_task >> render_task >> save_metrics_task
+```
+
+## 变更的文件列表与关键代码段
+
+### 新建文件：
+1. `dags/gemini/gemini_card_generation_dag.py` - 主 DAG 文件
+
+### 修改文件：
+1. `dags/gemini/validators.py` - 扩展校验逻辑
+2. `dags/gemini/renderers.py` - 扩展渲染逻辑
+
+### 关键代码段：
+
+#### 导入部分（修正后）
+```python
+from dags.gemini.config_reader import (
+    get_config_path,
+    load_json_config,
+    load_markdown_template
+)
+```
+
+#### 配置读取示例
+```python
+# 获取系统指令
+system_instruction_path = get_config_path("gemini_system_instruction_path", "/opt/airflow/dags/gemini/prompts/system_instruction.md")
+system_instruction = load_markdown_template(system_instruction_path)
+
+# 获取响应 Schema
+response_schema_path = get_config_path("gemini_response_schema_path", "/opt/airflow/dags/gemini/prompts/response_schema.json")
+response_schema = load_json_config(response_schema_path)
+
+# 获取模板
+template_path = get_config_path("gemini_md_template_path", "/opt/airflow/dags/gemini/prompts/md_template.md.j2")
+template_str = load_markdown_template(template_path)
+```
+
+## 待确认后开始实施
+
+以上是修正后的执行方案，已完整记录到 notes 文件中。请确认：
+
+1. **导入方式**是否正确（仅使用现有的三个函数）？
+2. **配置读取方式**是否符合要求？
+3. **实现细节**是否有遗漏？
+4. **修正内容**是否完整？
+
+确认无误后，我将严格按照修正后的方案开始实施，确保：
+- 严格执行已确定的方案
+- 如遇问题不绕开，先与您确认
+- 确保现有 Phoenix 流程不受影响
+- 所有功能按设计实现
+
+请确认是否可以开始实施？
+
+# ====================== Milestone 3 微调说明 ======================
+
+## 必须同步的微调
+
+### 1. 修正预览代码里的导入（已修正）
+**❌ 旧写法**：
+```python
+from dags.gemini.config_reader import get_gemini_config_paths, load_gemini_configs
+```
+
+**✅ 新写法（选项 A）**：
+```python
+from dags.gemini.config_reader import (
+    get_config_path,
+    load_json_config,
+    load_markdown_template
+)
+```
+
+### 2. 调度使用 Airflow Variable，而非硬编码（已修正）
+**❌ 旧写法**：
+```python
+schedule_interval='0 22 * * *',  # 06:00 BJT
+```
+
+**✅ 新写法**：
+```python
+schedule_interval=Variable.get("gemini_dag_schedule", default_var="0 22 * * *"),  # 从 Airflow Variable 读取
+```
+
+### 3. 日界口径要显式传入（已修正）
+**✅ 正确实现**：
+```python
+def find_input_file(**context):
+    """查找输入文件"""
+    # 获取可配置的日界
+    try:
+        from airflow.models import Variable
+        cutoff_hour = get_cutoff_hour(lambda k: Variable.get(k, default_var=None))
+    except Exception:
+        cutoff_hour = get_cutoff_hour()
+    
+    # 使用 time_utils 计算逻辑日期（支持可配置日界）
+    run_dt_utc = context['execution_date']
+    logical_date = prev_logical_date_str(run_dt_utc, cutoff_hour=cutoff_hour)
+    
+    # 查找 Phoenix 摘要文件
+    phoenix_exports_dir = get_config_path("phoenix_exports_dir", "/opt/airflow/exports")
+    # 支持回退机制
+    pass
+```
+
+### 4. 导入部分完整修正
+```python
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.models import Variable
+from dags.phoenix.time_utils import get_cutoff_hour, prev_logical_date_str
+from dags.gemini.config_reader import (
+    get_config_path,
+    load_json_config,
+    load_markdown_template
+)
+from dags.gemini.validators import validate_cards
+from dags.gemini.renderers import render_markdown
+```
+
+## 微调要点总结
+
+1. **导入修正**：仅使用现有的三个函数，不新增任何函数
+2. **调度配置**：使用 Airflow Variable 读取，支持无代码改动即可调度变更
+3. **日界口径**：显式传入 cutoff_hour 参数，确保所有筛选和文件匹配都以"北京时间 6AM 日界"口径为准（且可配置）
+4. **复用能力**：充分利用 Milestone 1 的 time_utils 和 Milestone 2 的 config_reader 能力
+
+## 最终确认
+
+以上微调已全部完成，确保：
+- ✅ 导入方式正确（仅使用现有的三个函数）
+- ✅ 调度配置使用 Airflow Variable
+- ✅ 日界口径可配置，复用 Milestone 1 能力
+- ✅ 所有筛选和文件匹配都以"北京时间 6AM 日界"口径为准
+
+请确认是否可以开始实施？
+
+# ====================== Milestone 3 修复补丁方案 ======================
+
+## 我对本任务的理解与执行方案详细阐述
+
+### 🎯 任务目标
+为 Milestone 3 的 Gemini DAG 添加真实的 Gemini API 调用能力，包括：
+1. 新增 Airflow Variables 配置
+2. 实现 `call_gemini_json` 核心函数
+3. 在 `select_top10` 和 `write_cards` 中添加 dry-run 与 live 模式切换
+4. 完善 validators 中的 hashtag 处理
+5. 统一输出目录创建逻辑
+
+### 📋 具体实施计划
+
+#### 1. 新增 Airflow Variables 读取
+在 DAG 中添加以下 Variables 的读取：
+- `gemini_model_id` (默认: "gemini-2.5-pro")
+- `gemini_project_id` (必需，用于 Vertex AI 初始化)
+- `gemini_location` (默认: "us-central1")
+- `gemini_dry_run` (默认: "true"，控制是否真实调用 API)
+
+#### 2. 实现 `call_gemini_json` 核心函数
+```python
+def call_gemini_json(model_id: str, system_text: str, user_payload: str, expect_schema: dict) -> dict:
+    """
+    调用 Gemini API 并返回 JSON 响应
+    
+    Args:
+        model_id: Gemini 模型 ID
+        system_text: 系统指令
+        user_payload: 用户输入
+        expect_schema: 期望的 JSON Schema
+        
+    Returns:
+        dict: 解析后的 JSON 响应
+    """
+    # 初始化 Vertex AI
+    # 构造 GenerativeModel
+    # 调用 generate_content
+    # 解析 JSON 响应
+    # 异常处理和重试逻辑
+    # 记录 metrics
+```
+
+#### 3. 修改 `select_top10` 和 `write_cards` 任务
+添加 dry-run 与 live 模式切换：
+```python
+# 读取 dry_run 配置
+dry_run = Variable.get("gemini_dry_run", default_var="true").lower() == "true"
+
+if dry_run:
+    # 模拟返回结果
+    logger.info("🤖 Dry-run 模式：返回模拟结果")
+    # 返回模拟的 Top10 或卡片数据
+else:
+    # 真实调用 Gemini API
+    logger.info("🚀 Live 模式：调用真实 Gemini API")
+    result = call_gemini_json(model_id, system_text, user_payload, expect_schema)
+```
+
+#### 4. 完善 validators.py
+确保 `validate_hashtags` 和 `fix_hashtags` 函数完整实现：
+- `validate_hashtags`: 检查 hashtag 格式和数量
+- `fix_hashtags`: 修复 hashtag 格式问题
+
+#### 5. 统一输出目录创建
+在所有需要写入文件的地方添加：
+```python
+os.makedirs(gemini_outputs_dir, exist_ok=True)
+```
+
+#### 6. 修改 logical_date 获取方式
+从 `context["logical_date"]` 获取，而不是从 xcom_pull
+
+### 🔧 关键实现细节
+
+#### Gemini API 调用流程
+1. **初始化**: `vertexai.init(project=project_id, location=location)`
+2. **模型创建**: `GenerativeModel(model_id)`
+3. **内容生成**: `model.generate_content([system_text, user_payload], generation_config={...})`
+4. **响应解析**: `json.loads(response.text)`
+5. **异常处理**: 重试机制和错误记录
+
+#### 重试和 Metrics 记录
+- 最大重试次数: 3
+- 记录重试次数、响应长度、解析状态
+- 保存到 metrics JSON 文件
+
+#### Dry-run 模式
+- 默认启用，确保开发测试安全
+- 返回结构化的模拟数据
+- 保持与真实 API 相同的数据格式
+
+### 📁 变更文件列表
+
+1. **`dags/gemini/gemini_card_generation_dag.py`**
+   - 添加新的 Airflow Variables 读取
+   - 实现 `call_gemini_json` 函数
+   - 修改 `select_top10` 和 `write_cards` 任务
+   - 统一输出目录创建逻辑
+
+2. **`dags/gemini/validators.py`**
+   - 完善 `validate_hashtags` 和 `fix_hashtags` 函数
+
+### 🧪 验收标准
+
+1. **验证脚本通过**: `python dev/verify_milestone3.py` 全部 ✅
+2. **Dry-run 模式**: 能正常生成 md/metrics 文件
+3. **Live 模式**: 配置真实凭据后能成功调用 Gemini API
+4. **Metrics 完整**: 包含重试次数、响应长度、解析状态等
+
+### ⚠️ 注意事项
+
+1. **凭据安全**: 确保服务账号凭据正确配置
+2. **错误处理**: 完善的异常处理和重试机制
+3. **日志记录**: 详细的调试和错误日志
+4. **向后兼容**: 保持 dry-run 模式作为默认，确保安全
+
+## 关键代码段预览
+
+### 1. 读取新增 Variables 的代码
+```python
+# 在 DAG 顶部添加
+gemini_model_id = Variable.get("gemini_model_id", default_var="gemini-2.5-pro")
+gemini_project_id = Variable.get("gemini_project_id", default_var="")
+gemini_location = Variable.get("gemini_location", default_var="us-central1")
+gemini_dry_run = Variable.get("gemini_dry_run", default_var="true").lower() == "true"
+```
+
+### 2. call_gemini_json 的核心实现
+```python
+def call_gemini_json(model_id: str, system_text: str, user_payload: str, expect_schema: dict) -> dict:
+    """调用 Gemini API 并返回 JSON 响应"""
+    import vertexai
+    from vertexai.generative_models import GenerativeModel
+    
+    # 初始化 Vertex AI
+    vertexai.init(project=gemini_project_id, location=gemini_location)
+    
+    # 构造模型
+    model = GenerativeModel(model_id)
+    
+    # 调用 API
+    response = model.generate_content(
+        [system_text, user_payload],
+        generation_config={
+            "temperature": 0.5,
+            "max_output_tokens": 2048,
+            "response_mime_type": "application/json"
+        }
+    )
+    
+    # 解析响应
+    return json.loads(response.text)
+```
+
+### 3. select_top10 / write_cards 中 dry-run 与 live 路径切换片段
+```python
+def select_top10(**context):
+    """选择 Top10 文章"""
+    # 获取配置
+    dry_run = Variable.get("gemini_dry_run", default_var="true").lower() == "true"
+    
+    if dry_run:
+        logger.info("🤖 Dry-run 模式：返回模拟 Top10 结果")
+        # 返回模拟结果
+        top10_indices = [{'index': i, 'reason': f'模拟选择第{i+1}篇'} for i in range(10)]
+    else:
+        logger.info("🚀 Live 模式：调用真实 Gemini API")
+        # 真实 API 调用
+        result = call_gemini_json(model_id, system_text, user_payload, expect_schema)
+        top10_indices = result.get('top10', [])
+    
+    return top10_indices
+```
+
+### 4. validators.py 中 validate_hashtags / fix_hashtags 的关键逻辑
+```python
+def validate_hashtags(hashtags: List[str]) -> bool:
+    """验证 hashtag 格式是否正确"""
+    if not isinstance(hashtags, list):
+        return False
+    
+    if len(hashtags) < 2 or len(hashtags) > 5:
+        return False
+    
+    for tag in hashtags:
+        if not isinstance(tag, str) or not tag.startswith("#"):
+            return False
+    
+    return True
+
+def fix_hashtags(hashtags: List[str]) -> List[str]:
+    """修复 hashtag 格式"""
+    if not isinstance(hashtags, list):
+        return ["#新闻", "#时政"]
+    
+    fixed_hashtags = []
+    for tag in hashtags:
+        if isinstance(tag, str):
+            if not tag.startswith("#"):
+                tag = "#" + tag
+            fixed_hashtags.append(tag)
+    
+    # 确保数量在 2-5 之间
+    if len(fixed_hashtags) < 2:
+        fixed_hashtags.extend(["#新闻", "#时政"])
+    elif len(fixed_hashtags) > 5:
+        fixed_hashtags = fixed_hashtags[:5]
+    
+    return fixed_hashtags
+```
+
+## 待确认后开始实施
+
+以上是 Milestone 3 修复补丁的详细执行方案，已完整记录到 notes 文件中。请确认：
+
+1. **新增 Variables 读取**是否正确？
+2. **call_gemini_json 实现**是否符合要求？
+3. **dry-run 与 live 模式切换**是否合理？
+4. **validators 完善**是否充分？
+5. **验收标准**是否明确？
+
+确认无误后，我将严格按照以上方案开始实施，确保：
+- 严格执行已确定的方案
+- 如遇问题不绕开，先与您确认
+- 确保现有功能不受影响
+- 所有功能按设计实现
+
+请确认是否可以开始实施？
+
+# ====================== Milestone 3 加固补丁方案 ======================
+
+## 我对本任务的理解与执行方案详细阐述
+
+### 🎯 任务目标
+为 Milestone 3 添加加固补丁，实现：
+1. **默认不回退**：Gemini 实时调用失败 → 任务直接失败（Airflow 标红）
+2. **本地 Schema 校验**：Gemini 返回成功也要过 `jsonschema.validate()`，不合规就当失败处理
+3. **可选回退机制**：通过 `gemini_allow_fallback_on_failure` 开关控制是否回退到模拟数据
+
+### 📋 具体实施计划
+
+#### 1. 新增 Airflow Variable
+- `gemini_allow_fallback_on_failure` (默认: "false"，不回退)
+
+#### 2. 依赖管理
+- 在 `requirements.txt` 增加：`jsonschema>=4.22`
+
+#### 3. 代码级改动
+
+##### 3.1 读取新开关
+```python
+allow_fallback = Variable.get("gemini_allow_fallback_on_failure", default_var="false").lower() == "true"
+```
+
+##### 3.2 加固 call_gemini_json 函数
+- 失败即抛，不做静默回退
+- 添加 `jsonschema.validate()` 校验
+- 重试机制保持不变
+
+##### 3.3 修改 select_top10 / write_cards
+- 原有的 dry-run 路径不动
+- 只有在 `dry_run == False` 且 Live 失败时，才看 `allow_fallback`
+- 显式标记 fallback 使用情况
+
+##### 3.4 增强 save_metrics
+- 添加 `fallback_used`、`last_error`、`schema_validated` 等可观测字段
+
+### 🔧 关键实现细节
+
+#### 行为对比
+| 场景 | 旧行为（当前） | 新行为（默认） | 新行为（打开 allow_fallback） |
+|------|----------------|----------------|-------------------------------|
+| Live 成功 + 返回合规 | 成功 | 成功 | 成功 |
+| Live 成功 + 返回不合规 | 可能以"看似成功但数据有坑"落盘 | 失败（标红） | 回退到模拟（并在 metrics 标记 fallback） |
+| Live 失败（网络/鉴权等） | 静默回退模拟数据 | 失败（标红） | 回退到模拟（并在 metrics 标记 fallback） |
+| Dry-run=true | 一直模拟 | 一直模拟 | 一直模拟 |
+
+#### 风险与回滚
+- **风险**：默认改为"失败不回退"，第一次上线若 Vertex 凭据/配额有问题，DAG 会标红
+- **回滚**：直接把 `gemini_allow_fallback_on_failure=true`，无需改代码即可恢复旧行为
+
+### 🧪 验收标准
+
+1. **默认不开回退**：设置 `gemini_dry_run=false`、`gemini_allow_fallback_on_failure=false`、故意让 Live 失败，期望任务失败，DAG 标红
+2. **打开回退**：设置 `gemini_dry_run=false`、`gemini_allow_fallback_on_failure=true`、仍让 Live 失败，期望 DAG 成功，metrics 标记 fallback
+3. **Schema 校验生效**：设置 `gemini_dry_run=false`、`allow_fallback=false`，mock 结构不合规的响应，期望 jsonschema_validate 抛错 → 任务失败
+
+## 关键代码段预览
+
+### 1. 读取新开关
+```python
+# 读取新开关
+allow_fallback = Variable.get("gemini_allow_fallback_on_failure", default_var="false").lower() == "true"
+```
+
+### 2. 加固 call_gemini_json 函数
+```python
+def call_gemini_json(model_id: str, system_text: str, user_payload: str, expect_schema: dict, max_retries: int = 3) -> dict:
+    import vertexai
+    from vertexai.generative_models import GenerativeModel
+    from jsonschema import validate as jsonschema_validate, ValidationError
+    import json, time, logging
+    logger = logging.getLogger(__name__)
+
+    vertexai.init(project=gemini_project_id, location=gemini_location)
+    model = GenerativeModel(model_id)
+
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = model.generate_content(
+                [system_text, user_payload],
+                generation_config={
+                    "temperature": 0.5,
+                    "max_output_tokens": 2048,
+                    "response_mime_type": "application/json"
+                }
+            )
+            data = json.loads(resp.text)
+
+            # 本地 Schema 校验（新增的强校验）
+            jsonschema_validate(instance=data, schema=expect_schema)
+            return data
+        except (Exception, ValidationError) as e:
+            last_err = e
+            logger.warning("Gemini call/schema validate failed (attempt %s/%s): %s", attempt, max_retries, e)
+            if attempt < max_retries:
+                time.sleep(2 * attempt)
+    # 全部失败后抛出，让上层按 allow_fallback 决策
+    raise RuntimeError(f"Gemini call failed after {max_retries} attempts: {last_err}")
+```
+
+### 3. select_top10 / write_cards 新的异常分支
+```python
+def select_top10(**context):
+    # ...准备 system_instruction, select_top_schema, user_payload 等
+    try:
+        if gemini_dry_run:
+            context['ti'].xcom_push(key="fallback_used", value=False)
+            # 返回模拟 top10
+            return [{'index': i, 'reason': f'模拟选择第{i+1}篇'} for i in range(10)]
+        else:
+            res = call_gemini_json(gemini_model_id, system_instruction, user_payload, select_top_schema)
+            context['ti'].xcom_push(key="fallback_used", value=False)
+            return res.get('top10', [])
+    except Exception as e:
+        context['ti'].xcom_push(key="last_error", value=str(e))
+        if allow_fallback:
+            # 有意回退：生成模拟 top10，并**显式标记** fallback
+            context['ti'].xcom_push(key="fallback_used", value=True)
+            return [{'index': i, 'reason': f'Fallback 第{i+1}篇'} for i in range(10)]
+        # 默认：不回退，任务失败
+        raise
+```
+
+### 4. metrics 字段增强
+```python
+def save_metrics(**context):
+    ti = context['ti']
+    metrics = {
+        # ...你已有的统计
+        "dry_run": gemini_dry_run,
+        "fallback_used": bool(ti.xcom_pull(key="fallback_used")),
+        "last_error": ti.xcom_pull(key="last_error") or "",
+        # 当且仅当 live + 成功 + 过 schema 校验时，由 call_gemini_json 调用成功来代表
+        "schema_validated": (not gemini_dry_run) and (not bool(ti.xcom_pull(key="fallback_used"))) and (ti.xcom_pull(key="last_error") is None),
+    }
+    # ...落盘逻辑不变
+```
+
+### 5. requirements.txt 变更
+```
+jsonschema>=4.22
+```
+
+## 待确认后开始实施
+
+以上是 Milestone 3 加固补丁的详细执行方案，已完整记录到 notes 文件中。请确认：
+
+1. **默认不回退机制**是否正确？
+2. **Schema 校验实现**是否符合要求？
+3. **可选回退开关**是否合理？
+4. **Metrics 字段增强**是否充分？
+5. **验收标准**是否明确？
+
+确认无误后，我将严格按照以上方案开始实施，确保：
+- 严格执行已确定的方案
+- 如遇问题不绕开，先与您确认
+- 确保现有功能不受影响
+- 所有功能按设计实现
+
+请确认是否可以开始实施？
+
+# ====================== Milestone 3: Gemini 简报生成 DAG ======================
+
+## 任务理解与执行方案详细阐述
+
+### 1. 任务目标
+实现 `gemini_card_generation_dag`，完成从 Phoenix 摘要文件到 Gemini API 调用，再到生成选题卡片 JSON 和渲染 Markdown 报告的全链路。
+
+**核心功能**：
+- 每日北京时间 06:00 自动触发
+- 读取 Phoenix 摘要文件
+- 调用 Gemini API 生成选题卡片
+- 校验和修复卡片内容
+- 渲染 Markdown 报告
+- 保存到指定输出目录
+
+### 2. 设计约束
+- **DAG ID**: `gemini_card_generation_dag`
+- **调度时间**: 06:00 BJT（使用 Airflow Variable: `gemini_dag_schedule`）
+- **输入文件**: Phoenix exports/ 目录（使用 `time_utils.py` 计算逻辑日期）
+- **输出文件**: gemini_outputs_dir（Airflow Variable）
+- **文件命名**: `YYYY-MM-DD_HH-MM-SS_daily_briefing.md`
+- **Gemini 模型**: `gemini-2.5-pro`
+
+### 3. 执行方案逐点说明
+
+#### 3.1 DAG 流程设计
+```
+find_input → pre_filter → select_top10 → write_cards → validate_and_fix → render_markdown → save_metrics
+```
+
+**任务链详细说明**：
+
+1. **find_input 任务**
+   - 调用 `prev_logical_date_str(run_dt_utc)` 计算前一日逻辑日期
+   - 在 `phoenix_exports_dir` 中查找对应的 JSON 摘要文件
+   - 找不到则回退到最近 48 小时最新一份
+   - 返回文件路径给下游任务
+
+2. **pre_filter 任务**
+   - 读取摘要 JSON 文件
+   - 时间窗过滤：仅保留 24 小时新闻
+   - 冲突词过滤：使用 `normal_conflict.json`，爆点例外使用 `bang_words.json`
+   - 去重：基于 URL + 标题相似度
+   - 截断正文：使用 Airflow Variable `summary_truncate_chars`（推荐 800-1200）
+   - 限制候选条数：使用 Airflow Variable `cards_topk`（推荐 ≤60）
+   - 保存到 `prefiltered_YYYYMMDD.json`
+
+3. **select_top10 任务**
+   - 调用 Gemini API，绑定 `select_top_schema.json`
+   - 输入：候选 JSON + 系统指令（`system_instruction.md`）
+   - 输出：10 条索引 + 简要理由
+   - 返回选中的 Top10 索引
+
+4. **write_cards 任务**
+   - 调用 Gemini API，绑定 `response_schema.json`
+   - 输入：Top10 候选数据
+   - 输出：完整卡片 JSON（title、subtitle、hashtags、summary、date、source）
+   - `date` 字段：本地回填逻辑日，不让模型生成
+   - `source`：本地拼接为"媒体名 – URL"
+   - 保存到 `cards_YYYYMMDD.json`
+
+5. **validate_and_fix 任务**
+   - 调用 `validators.validate_cards`
+   - 校验规则：
+     - title ≤ 8 中文字符
+     - subtitle ≤ 12 中文字符
+     - summary ≤ 200 中文字符
+     - hashtags 2-5 个，且以 # 开头
+   - 不符合规则的条目进行修复或丢弃
+   - 返回校验后的卡片列表
+
+6. **render_markdown 任务**
+   - 调用 `renderers.render_markdown`
+   - 使用 `md_template.md.j2` 渲染模板
+   - 输出 Markdown 格式报告
+   - 文件命名：`YYYY-MM-DD_HH-MM-SS_daily_briefing.md`
+
+7. **save_metrics 任务**
+   - 保存运行指标 JSON
+   - 包含：候选条数、Top10 是否齐全、重试次数、token 估算
+   - 文件命名：`metrics_YYYYMMDD.json`
+
+#### 3.2 关键实现细节
+
+**Gemini API 调用**：
+```python
+from vertexai.generative_models import GenerativeModel, Part
+
+model = GenerativeModel("gemini-2.5-pro")
+response = model.generate_content(
+    contents=[system_prompt, user_prompt],
+    generation_config={
+        "temperature": 0.5,
+        "max_output_tokens": 2048,
+        "response_mime_type": "application/json"
+    }
+)
+```
+
+**校验逻辑扩展**：
+```python
+def validate_cards(cards: list[dict]) -> list[dict]:
+    """检查长度、hashtags、重复事件，不符合时抛异常或标记。"""
+    valid = []
+    seen_titles = set()
+    for c in cards:
+        if len(c["title"]) > 8: c["title"] = c["title"][:8]
+        if len(c["subtitle"]) > 12: c["subtitle"] = c["subtitle"][:12]
+        if len(c["summary"]) > 200: c["summary"] = c["summary"][:200]
+        if tuple(c["title"], c["subtitle"]) in seen_titles: continue
+        seen_titles.add((c["title"], c["subtitle"]))
+        valid.append(c)
+    return valid
+```
+
+**渲染逻辑扩展**：
+```python
+from jinja2 import Template
+
+def render_markdown(cards: list[dict], template_path: str, logical_date: str) -> str:
+    with open(template_path, "r", encoding="utf-8") as f:
+        tpl = Template(f.read())
+    # summary_points: 简单切分 summary 句子
+    for c in cards:
+        sentences = c["summary"].replace("；","。").split("。")
+        c["summary_points"] = [s for s in sentences if s][:3]
+    return tpl.render(cards=cards, logical_date=logical_date)
+```
+
+#### 3.3 文件结构设计
+
+**新建文件**：
+- `dags/gemini/gemini_card_generation_dag.py` - 主 DAG 文件
+
+**修改文件**：
+- `dags/gemini/validators.py` - 扩展校验逻辑
+- `dags/gemini/renderers.py` - 扩展渲染逻辑，支持 Jinja2
+
+**调用已有模块**：
+- `dags/phoenix/time_utils.py` - 逻辑日期计算
+- `dags/gemini/config_reader.py` - 配置读取
+
+#### 3.4 配置管理
+
+**新增 Airflow Variables**：
+- `gemini_model_id`: "gemini-2.5-pro"
+- `summary_truncate_chars`: "1000"
+- `cards_topk`: "50"
+
+**使用现有 Variables**：
+- `phoenix_exports_dir`: Phoenix 摘要文件目录
+- `gemini_outputs_dir`: Gemini 输出目录
+- `gemini_dag_schedule`: DAG 调度时间
+- 所有 prompts/schema/template 路径变量
+
+#### 3.5 错误处理与重试机制
+
+**文件查找失败**：
+- 回退到最近 48 小时最新文件
+- 记录警告日志
+
+**Gemini API 调用失败**：
+- 实现重试机制（最多 3 次）
+- 记录 token 使用情况
+- 失败时保存错误信息到 metrics
+
+**校验失败**：
+- 自动修复常见问题
+- 无法修复的条目记录到 metrics
+- 确保至少返回 5 条有效卡片
+
+#### 3.6 输出文件规范
+
+**文件命名规则**：
+- `prefiltered_YYYYMMDD.json` - 预过滤后的候选数据
+- `cards_YYYYMMDD.json` - 最终选题卡片
+- `YYYY-MM-DD_HH-MM-SS_daily_briefing.md` - Markdown 报告
+- `metrics_YYYYMMDD.json` - 运行指标
+
+**文件内容规范**：
+- JSON 文件使用 UTF-8 编码
+- Markdown 文件使用 UTF-8 编码，无 BOM
+- 所有文件包含时间戳和版本信息
+
+### 4. 验证标准
+
+#### 4.1 功能验证
+- ✅ DAG 文件存在且能被 Airflow 加载
+- ✅ 每日 06:00 BJT 自动运行（或手动触发）
+- ✅ 能正确找到前一日摘要文件（或回退）
+- ✅ 生成所有必需的输出文件
+
+#### 4.2 内容验证
+- ✅ 校验规则生效，违规条目能被修复或丢弃
+- ✅ Markdown 报告格式符合模板
+- ✅ 标题 ≤ 8 字、副标题 ≤ 12 字
+- ✅ hashtags 正确格式（2-5 个，带 #）
+- ✅ summary 分三点结构
+
+#### 4.3 文件验证
+- ✅ 文件命名规范
+- ✅ 文件内容格式正确
+- ✅ 包含完整的运行指标
+
+### 5. 技术实现要点
+
+#### 5.1 依赖管理
+- 使用 Vertex AI Python SDK
+- 集成 Jinja2 模板引擎
+- 复用现有的 time_utils 和 config_reader
+
+#### 5.2 性能优化
+- 批量处理候选数据
+- 缓存配置文件内容
+- 优化 Gemini API 调用频率
+
+#### 5.3 监控与日志
+- 详细的执行日志
+- 运行指标记录
+- 错误信息追踪
+
+## 变更的文件列表与关键代码段
+
+### 新建文件：
+1. `dags/gemini/gemini_card_generation_dag.py` - 主 DAG 文件
+
+### 修改文件：
+1. `dags/gemini/validators.py` - 扩展校验逻辑
+2. `dags/gemini/renderers.py` - 扩展渲染逻辑
+
+### 关键代码段预览：
+
+#### `dags/gemini/gemini_card_generation_dag.py`
+```python
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.models import Variable
+from dags.phoenix.time_utils import get_cutoff_hour, prev_logical_date_str
+from dags.gemini.config_reader import (
+    get_config_path,
+    load_json_config,
+    load_markdown_template
+)
+from dags.gemini.validators import validate_cards
+from dags.gemini.renderers import render_markdown
+
+default_args = {
+    'owner': 'phoenix-team',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 1, 1),
+    'email_on_failure': True,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5)
+}
+
+dag = DAG(
+    'gemini_card_generation_dag',
+    default_args=default_args,
+    description='Gemini 选题卡片生成 DAG',
+    schedule_interval=Variable.get("gemini_dag_schedule", default_var="0 22 * * *"),  # 从 Airflow Variable 读取
+    catchup=False,
+    tags=['gemini', 'news', 'cards']
+)
+
+def find_input_file(**context):
+    """查找输入文件"""
+    # 实现逻辑
+
+def pre_filter_articles(**context):
+    """预过滤文章"""
+    # 实现逻辑
+
+def select_top10(**context):
+    """选择 Top10 文章"""
+    # 实现逻辑
+
+def write_cards(**context):
+    """生成选题卡片"""
+    # 实现逻辑
+
+def validate_and_fix(**context):
+    """校验和修复卡片"""
+    # 实现逻辑
+
+def render_markdown_report(**context):
+    """渲染 Markdown 报告"""
+    # 实现逻辑
+
+def save_metrics(**context):
+    """保存运行指标"""
+    # 实现逻辑
+
+# 任务定义
+find_input_task = PythonOperator(
+    task_id='find_input',
+    python_callable=find_input_file,
+    dag=dag
+)
+
+pre_filter_task = PythonOperator(
+    task_id='pre_filter',
+    python_callable=pre_filter_articles,
+    dag=dag
+)
+
+select_top10_task = PythonOperator(
+    task_id='select_top10',
+    python_callable=select_top10,
+    dag=dag
+)
+
+write_cards_task = PythonOperator(
+    task_id='write_cards',
+    python_callable=write_cards,
+    dag=dag
+)
+
+validate_task = PythonOperator(
+    task_id='validate_and_fix',
+    python_callable=validate_and_fix,
+    dag=dag
+)
+
+render_task = PythonOperator(
+    task_id='render_markdown',
+    python_callable=render_markdown_report,
+    dag=dag
+)
+
+save_metrics_task = PythonOperator(
+    task_id='save_metrics',
+    python_callable=save_metrics,
+    dag=dag
+)
+
+# 任务依赖
+find_input_task >> pre_filter_task >> select_top10_task >> write_cards_task >> validate_task >> render_task >> save_metrics_task
+```
+
+#### `dags/gemini/validators.py` 扩展
+```python
+def validate_cards(cards: list[dict]) -> list[dict]:
+    """检查长度、hashtags、重复事件，不符合时抛异常或标记。"""
+    valid = []
+    seen_titles = set()
+    
+    for c in cards:
+        # 长度校验和修复
+        if len(c["title"]) > 8: 
+            c["title"] = c["title"][:8]
+        if len(c["subtitle"]) > 12: 
+            c["subtitle"] = c["subtitle"][:12]
+        if len(c["summary"]) > 200: 
+            c["summary"] = c["summary"][:200]
+        
+        # 去重检查
+        title_key = (c["title"], c["subtitle"])
+        if title_key in seen_titles: 
+            continue
+        seen_titles.add(title_key)
+        
+        # hashtags 校验
+        if not validate_hashtags(c["hashtags"]):
+            c["hashtags"] = fix_hashtags(c["hashtags"])
+        
+        valid.append(c)
+    
+    return valid
+```
+
+#### `dags/gemini/renderers.py` 扩展
+```python
+from jinja2 import Template
+
+def render_markdown(cards: list[dict], template_path: str, logical_date: str) -> str:
+    """使用 Jinja2 渲染 Markdown 报告"""
+    with open(template_path, "r", encoding="utf-8") as f:
+        tpl = Template(f.read())
+    
+    # 处理 summary_points
+    for c in cards:
+        sentences = c["summary"].replace("；","。").split("。")
+        c["summary_points"] = [s.strip() for s in sentences if s.strip()][:3]
+    
+    return tpl.render(
+        cards=cards, 
+        logical_date=logical_date,
+        generation_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+```
+
+## 待确认后开始实施
+
+以上是详细的执行方案，已完整记录到 notes 文件中。请确认：
+
+1. **DAG 流程设计**是否符合要求？
+2. **任务链设计**是否合理？
+3. **实现细节**是否有遗漏？
+4. **文件结构**是否完整？
+5. **验证标准**是否充分？
+
+确认无误后，我将严格按照上述方案开始实施，确保：
+- 严格执行已确定的方案
+- 如遇问题不绕开，先与您确认
+- 确保现有 Phoenix 流程不受影响
+- 所有功能按设计实现
+
+请确认是否可以开始实施？
+

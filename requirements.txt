@@ -15,6 +15,8 @@ apache-airflow-providers-postgres
 # V2 Phoenix 系统新增核心依赖 (V2 Phoenix Core Dependencies)
 # 用于调用NewsAPI.ai的官方SDK
 eventregistry==9.1.0
+# 用于 Gemini API 响应的 JSON Schema 校验
+jsonschema>=4.22
 
 # 监控与未来扩展依赖 (Monitoring & Future Extensions)
 # 用于暴露监控指标
@@ -24,6 +26,12 @@ scikit-learn>=1.4.0
 # 用于处理YAML配置文件
 ruamel.yaml>=0.18.0
 
-# V1 遗留依赖 (Legacy Dependencies)
-# 确保旧代码部分（如果需要）的兼容性
-textblob>=0.17.0
+
+# Gemini & Google Cloud Dependencies
+google-cloud-aiplatform>=1.68.0
+grpcio>=1.62.0
+protobuf>=4.25.3
+google-generativeai>=0.7.0
+google-genai>=0.5.0
+# Markdown to HTML for Email Body
+Markdown>=3.6

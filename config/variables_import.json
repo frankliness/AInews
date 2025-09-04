@@ -1,0 +1,57 @@
+{
+    "gemini_dag_schedule": "0 6 * * *",
+    "email_dag_schedule": "30 6 * * *",
+    "summary_generation_dag_schedule": "0 23 * * *",
+    "ingestion_scoring_dag_schedule": "0 22 * * *",
+
+    "google_cloud_project": "ainews-468705",
+    "google_cloud_location": "us-central1",
+    "gemini_model_id": "gemini-2.5-pro",
+
+    "gemini_system_instruction": "你现在是一名时政自媒体的 AI 选题编辑，目标：在给定的新闻 / 推文原始数据里，筛选出最具讨论度的 10 条，输出符合频道标准的选题卡片。",
+    "gemini_user_prompt_template": "所有选题都从文件{source_filename}中选出10个不同话题的选题新闻。新闻内容必须符合频道选题要求，排除常态冲突中包含的事件。按照给定格式输出。从以上文档内选取24小时内发布的符合频道选题标准的新闻。并附上url。同样的事件不要多次出现，尽量多样化。\n\n### 爆点词\n“大规模空袭”,“停火破裂”,“泄密录音”,“贪腐证据”,“关键人物遇袭”,“被捕”,“辞职声明”,“弹劾案”,“资金黑洞”\n\n### 常态冲突词\n“加沙”,“以色列”,“哈马斯”,“俄乌”,“炮击”,“无人机”,“前线”,“制裁”,“反攻”“中国政府内幕”，“新冠疫苗”，“中国政府”，“中国海军”，“中国武警”，“中国台湾”。\n\n### 说明\n- “常态冲突池”仍采用原来的关键词表（加沙、俄乌等）。自然灾害相关如果是常规报道，没有官方相关符合频道要求的，也尽量不选。\n- 只要同条推文同时触发「爆点」或「内幕」标记，就视为例外，仍可继续评分。\n- 该过滤发生在评分与去重之前，确保纯常态内容完全不会出现在最终 10 条选题里。\n\n### 新闻内容要求\n• 时效性：反映24小时内事件，优先突发性或最新动态。\n• 高信息密度：整合背景、参与方、进展、数据及影响，结构化且丰富，尽量选择权威媒体。\n• 趣味性或影响或反差（任选其一）：\n  o 趣味性（吃瓜）：戏剧性细节，激发情感共鸣或讨论。\n  o 深远影响（小见大）：从小事件提炼大趋势。\n  o 反差：预期与现实差异，制造认知冲击。精准触达中国观众的“痛点”（如技术封锁、外部打压）或“爽点”（如技术突破、外交胜利、对手困境）。包含清晰的国家间、阵营间或文明间的冲突、竞争元素。超越主流报道的独特信息、稀缺数据或深度分析。\n\n### 输出格式（严格遵循，生成恰好10条）\n选题1\n涉及地区/热点： #地区或#话题 标签若干（例如：#英国 #火灾 #纺织厂）\n标题：\n副标题：\n内容：事件：……；背景：……；看点：……（结构化、信息密度高，必要时注明“以上信息基于媒体报道，尚待进一步核实。”）\n时间：YYYY-MM-DD（对应新闻发布时间，需在最近24小时内）\n来源：域名 – 完整URL（如：bbc.com – https://www.bbc.com/…）\n\n选题2\n涉及地区/热点： …\n标题：\n副标题：\n内容：事件：……；背景：……；看点：……\n时间：YYYY-MM-DD\n来源：域名 – 完整URL\n\n…（共10条，选题编号依次递增到 选题10）\n\n其他硬性要求：\n- 仅从文件 {source_filename} 所包含的文章中选择；\n- 同一事件不得重复出现（去重后保留信息量更高的一条）；\n- 优先保留触发“爆点词”的新闻；\n- 命中“常态冲突词”的新闻需要剔除，除非同时触发“爆点”或“内幕”例外；\n- 为每条选题附上来源域名与可点击URL；\n- 严格输出10条，不要输出任何额外解释或总结。\n\n以下为该文件的新闻摘要JSON内容：\n---\n{summary_content}\n---",
+
+    "gemini_temperature": 0.3,
+    "gemini_request_timeout_seconds": 300,
+    "gemini_max_retries": 3,
+    "gemini_streaming_enabled": true,
+    "gemini_max_output_tokens": 8192,
+    "gemini_top_p": 0.9,
+
+    "gemini_file_selection_strategy": "latest_any",
+    "gemini_manual_selection_strategy": "latest_any",
+
+    "email_report_selection_strategy": "latest_daily_single",
+
+    "business_report_email_list": ["tracytracy0315@qq.com"],
+    "system_alert_email_list": ["tracytracy0315@qq.com"],
+    "recipient_email_list": ["tracytracy0315@qq.com"],
+    "alert_email_list": ["tracytracy0315@qq.com"],
+    "gmail_smtp_user": "compay4verify@gmail.com",
+    "gmail_smtp_password": "nmbygwfebcaoilga",
+
+    "ENABLE_SOURCE_WHITELIST": "True",
+    "TRUSTED_SOURCES_WHITELIST": [],
+
+    "ainews_articles_per_event": 1,
+    "ainews_popular_events_limit": 30,
+    "ainews_breaking_events_limit": 20,
+    "ainews_breaking_recent_hours": 6,
+
+    "ainews_freshness_tau_hours": 6,
+    "ainews_weight_hot": 0.35,
+    "ainews_weight_authority": 0.25,
+    "ainews_weight_concept": 0.2,
+    "ainews_weight_freshness": 0.15,
+    "ainews_weight_sentiment": 0.05,
+
+    "ainews_routine_topic_uris": [],
+    "ainews_downweight_category_uris": [],
+    "ainews_routine_topic_damping_factor": 0.3,
+    "ainews_category_damping_factor": 0.5,
+    "ainews_freshness_threshold_for_breaking": 0.8,
+
+    "bj_cutoff_hour": 6,
+
+    "ainews_eventregistry_apikeys": {"keys": []}
+  }

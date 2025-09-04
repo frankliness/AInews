@@ -1,0 +1,146 @@
+### 里程碑 2：核心逻辑模块化（Refactoring）实施方案（待确认）
+
+- 任务理解
+  - 将 `vertexapi/vertexapi_test.py` 中与 AI 生成和邮件发送相关的能力提炼为两个独立模块，放入 `dags/phoenix/`，供 Airflow DAG 直接导入调用。
+  - 两个模块分别为：`gemini_utils.py`（封装 Vertex AI Gemini 交互）与 `email_utils.py`（封装邮件发送）。
+  - 模块需在 Airflow 环境中通过 Airflow Variables 读取配置；在本地无 Airflow 时降级为环境变量读取，便于本地调试。
+
+- 模块设计与职责
+  - dags/phoenix/gemini_utils.py（AI 生成模块）
+    - 读取变量：`google_cloud_project`、`google_cloud_location`、`gemini_model_id`、`gemini_system_instruction`、`gemini_temperature`（可缺省，默认 0.3）。
+    - 函数：`init_vertex_client()` 初始化 Vertex 客户端；`generate_topic_cards_from_summary(summary_content: str) -> str` 组装提示词并调用 Gemini，返回 Markdown 文本。
+    - 使用 `vertexai.generative_models.GenerativeModel`，将系统指令放入 `system_instruction`，提示词以用户输入携带 Phoenix 摘要 JSON 字符串。
+    - 日志：关键步骤均记录日志；异常直接抛出，交由 Airflow 重试策略处理。
+  - dags/phoenix/email_utils.py（邮件发送模块）
+    - 读取变量：`gmail_smtp_user`、`gmail_smtp_password`、`recipient_email_list`（JSON 反序列化）。
+    - 函数：`send_topic_card_email(report_files: list[str], execution_date_str: str)`
+      - 读取一个或多个 Markdown 报告文件合并成邮件正文（先转 HTML），并将原 Markdown 作为附件。
+      - 使用 `markdown.markdown(..., extensions=['fenced_code', 'tables'])` 生成 HTML，提升可读性。
+      - SMTP：`smtp.gmail.com:465` + `SMTP_SSL` 发送；认证失败与其他异常均记录并抛出。
+    - 边界：若未提供文件或收件人列表为空则直接警告/终止。
+
+- 配置与变量（对齐 variables_import.json）
+  - 已存在：`google_cloud_project`、`google_cloud_location`、`gemini_model_id`、`gemini_system_instruction`、`recipient_email_list`、`gmail_smtp_user`、`gmail_smtp_password`。
+  - 可缺省：`gemini_temperature`（默认 0.3，后续可按需在 Airflow Variables 中补充）。
+
+- 依赖与运行环境
+  - 依赖已在 `requirements.txt`：`google-cloud-aiplatform>=1.55.0`（包含 `vertexai`）、`Markdown>=3.6`。
+  - GCP 凭据：建议在容器中设置 `GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/config/<service-account>.json`，指向 `config/` 中的服务账号文件（如需我们可在后续里程碑统一到 `docker-compose.phoenix.yml`）。
+
+- 与 Airflow DAG 对接方式（示例形态，非本里程碑改动）
+  - 选题卡生成任务：
+    - 从 Phoenix 摘要产物（JSON 字符串或文件读取后转字符串）调用 `generate_topic_cards_from_summary(summary_json_str)`，获得 Markdown 文本，并由 DAG 写入 `gemini_outputs/`（或指定目录）。
+  - 邮件发送任务：
+    - 传入生成的 Markdown 文件路径列表与执行日期字符串，调用 `send_topic_card_email([...], execution_date_str)` 发送邮件。
+
+- 错误处理策略
+  - Gemini 请求失败：记录错误并抛出；Airflow 侧由重试策略兜底。
+  - 邮件发送：认证错误与网络异常分别记录并抛出，便于排障。
+  - 本地降级：Airflow Variables 不可用时使用环境变量读取，保证可在非 Airflow 环境最小化测试。
+
+- 关键代码段（摘要）
+  - `gemini_utils.py`
+    - `init_vertex_client()`：`vertexai.init(project=PROJECT_ID, location=LOCATION)`
+    - `generate_topic_cards_from_summary(summary_content: str) -> str`：实例化 `GenerativeModel(MODEL_ID, system_instruction=SYSTEM_INSTRUCTION)` 并 `generate_content([...])`，返回 `response.text`。
+  - `email_utils.py`
+    - 合并多个 Markdown 文件为邮件正文 → `markdown.markdown()` 转 HTML → `EmailMessage` 添加 HTML alternative 与原 Markdown 附件 → `smtplib.SMTP_SSL('smtp.gmail.com', 465)` 发送。
+
+- 变更清单（本里程碑仅新增文件，不修改既有文件）
+  - 新增：`dags/phoenix/gemini_utils.py`
+  - 新增：`dags/phoenix/email_utils.py`
+
+- 风险与待确认项（请确认）
+  - 是否需要在 `docker-compose.phoenix.yml` 中添加 `GOOGLE_APPLICATION_CREDENTIALS` 环境变量以便容器内鉴权？（推荐）
+  - `email_utils.py` 的本地测试降级实现中需要 `import os`（用于 `os.getenv`），原设计草案未显式导入；是否同意在实现时补充该导入？
+  - 邮件发送使用 465 端口 SSL（与既有 `vertexapi_test.py` 的 587 STARTTLS 不同）；本里程碑按设计稿保留 465/SSL 实现。
+
+- 实施步骤（待你确认后执行）
+  1) 新增 `dags/phoenix/gemini_utils.py`，按设计稿实现（含日志与异常处理）。
+  2) 新增 `dags/phoenix/email_utils.py`，按设计稿实现（含 Markdown→HTML、附件与 SMTP_SSL）。
+  3) 不改动 DAG 与 Compose；如需集成/变量补充将在后续里程碑处理。
+  4) 在 Airflow 环境中以自测 DAG/Task 或临时 PythonOperator 验证调用链路（后续阶段）。
+
+说明：本里程碑不落地 DAG 改动，仅产出可复用模块，并确保与 `config/variables_import.json` 对齐；如需对容器鉴权变量与目录做进一步配置，待你确认后按推荐执行。
+
+### 里程碑 3：内容创作 DAG 实现（Implementation）实施方案（待确认）
+
+- 任务理解
+  - 在 `dags/phoenix/` 新增 `gemini_card_generation_dag.py`，定义一个每日定时运行的 DAG：
+    - 每天北京时间 06:00 准时触发（Airflow 使用 UTC 调度，采用 Variable 中的 cron：`gemini_dag_schedule`，默认 `0 22 * * *`）。
+    - 精确匹配“逻辑日期”对应的 Phoenix 摘要 JSON：`/opt/airflow/exports/summary_YYYY-MM-DD_*.json`，若多份取最新修改时间。
+    - 调用 `phoenix.gemini_utils.generate_topic_cards_from_summary` 生成 Markdown 报告。
+    - 将结果保存至 `/opt/airflow/gemini_outputs/`，文件名使用北京时间的执行时间戳：`YYYY-MM-DD_HH-MM-SS_daily_briefing.md`。
+
+- 设计与实现要点
+  - 使用 `pendulum` 处理时区与逻辑日期；DAG `start_date` 设为 `pendulum.datetime(2025, 1, 1, tz="Asia/Shanghai")`。
+  - 通过 `Variable.get("gemini_dag_schedule", default_var="0 22 * * *")` 读取调度表达式；若本地无 Airflow，回退默认值。
+  - 在 `PythonOperator` 的 `python_callable` 中实现查找文件、调用 Gemini、保存输出，并通过 XCom 返回路径（便于后续里程碑的邮件发送 DAG 消费）。
+
+- 依赖与运行环境
+  - 依赖已满足：`pendulum` 随 Airflow 自带；`phoenix/gemini_utils.py` 在本仓库中可直接导入。
+  - 路径均为容器内路径：输入 `/opt/airflow/exports`，输出 `/opt/airflow/gemini_outputs`（已在 compose 中挂载）。
+
+- 错误处理
+  - 未找到摘要文件：抛出 `FileNotFoundError`，使任务失败并触发 Airflow 重试/告警。
+  - Gemini 生成失败：上游工具已记录并抛出；此处不吞异常。
+
+- 变更清单（拟新增）
+  - 新增：`dags/phoenix/gemini_card_generation_dag.py`
+
+- 关键代码段（将完整粘贴实现）
+  - `find_and_process_summary`：
+    - `summary_files_for_date = list(Path("/opt/airflow/exports").glob(f"summary_{logical_date_str}_*.json"))`
+    - `latest_summary_file = max(..., key=lambda p: p.stat().st_mtime)`
+    - 调用 `generate_topic_cards_from_summary(summary_content)` 并写入 `/opt/airflow/gemini_outputs`。
+
+- 实施步骤（待你确认后执行）
+  1) 新增 `dags/phoenix/gemini_card_generation_dag.py`，按你提供的完整代码落地。
+  2) 在 Airflow UI 中启用该 DAG，等待次日 06:00 触发或手动触发验证（逻辑日期将对应到前一天）。
+  3) 核对输出文件是否按北京时间命名且落地在 `/gemini_outputs/`。
+
+说明：本里程碑仅创建 DAG，不改动已实现的工具模块与 Compose；如发现路径或时区配置需调整，将先与你确认后再变更。
+
+- 已实施与变更（里程碑 3）
+  - 新增 `dags/phoenix/gemini_card_generation_dag.py`，完整实现每日 06:00（北京时）基于逻辑日期定位摘要 JSON → 调用 `phoenix.gemini_utils.generate_topic_cards_from_summary` → 以北京时间命名写入 `/opt/airflow/gemini_outputs` 的流程；异常处理严格按设计执行。
+  - 保持与里程碑 2 的模块接口一致，无额外改动。
+
+### 里程碑 4：邮件分发 DAG 实现（Implementation）实施方案（待确认）
+
+- 任务理解
+  - 在 `dags/phoenix/` 新增 `email_distribution_dag.py`，定义一个每日定时运行的 DAG：
+    - 每天北京时间 06:30 准时触发（Variable：`email_dag_schedule`，默认 `30 22 * * *`）。
+    - 自动查找当天（北京时）由 `gemini_card_generation_dag` 生成的所有 Markdown 报告：`/opt/airflow/gemini_outputs/<YYYY-MM-DD>_*.md`。
+    - 调用 `phoenix.email_utils.send_topic_card_email(report_files, execution_date_str)` 发送邮件。
+    - 邮件正文为合并后的 HTML（由 Markdown 渲染），并附上所有原始 `.md` 文件。
+
+- 设计与实现要点
+  - 使用 `pendulum` 获取 `data_interval_start`，并转换为北京时作为业务日期字符串。
+  - 以北京时业务日期字符串前缀匹配当日所有报告文件，排序后批量传入邮件工具。
+  - 若当日无报告，记录 warning 并正常结束（避免无意义失败）。
+
+- 依赖与运行环境
+  - 依赖：`phoenix/email_utils.py` 已就绪；`markdown` 已在 `requirements.txt`。
+  - 目录：输入 `/opt/airflow/gemini_outputs`（compose 已挂载）。
+
+- 错误处理
+  - 发送失败由 `email_utils` 抛出异常并记录；当日无报告则不视为失败，直接返回。
+
+- 变更清单（拟新增）
+  - 新增：`dags/phoenix/email_distribution_dag.py`
+
+- 关键代码段（将完整粘贴实现）
+  - `find_and_email_reports`：
+    - `execution_dt = context["data_interval_start"]` → 转北京时 `execution_date_beijing_str`
+    - `report_files_for_today = sorted(Path("/opt/airflow/gemini_outputs").glob(f"{execution_date_beijing_str}_*.md"))`
+    - `send_topic_card_email([...], execution_date_str=execution_date_beijing_str)`
+
+- 实施步骤（待你确认后执行）
+  1) 新增 `dags/phoenix/email_distribution_dag.py`，按你提供的完整代码落地。
+  2) 在 Airflow UI 中启用该 DAG，等待次日 06:30 触发或手动触发验证（依赖已有的当日报告）。
+  3) 验证收件邮箱是否收到 HTML 正文与 `.md` 附件；若失败，依据日志排查并修复。
+
+说明：本里程碑仅创建邮件分发 DAG，不改动已实现的工具模块与其它 DAG；如需调整变量或目录，将先与你确认后再变更。
+
+- 已实施与变更（里程碑 4）
+  - 新增 `dags/phoenix/email_distribution_dag.py`，完整实现每日 06:30（北京时）搜集当日所有 `*.md` 报告并调用 `phoenix.email_utils.send_topic_card_email` 发送（HTML 正文 + `.md` 附件）；当日无报告时正常结束，异常则抛出。
+  - 未改动既有模块与 DAG，设计保持一致。

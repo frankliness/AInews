@@ -3,8 +3,16 @@ Phoenix Summary Generation DAG - 每日新闻摘要JSON报告生成器
 严格遵循"北京时间6AM"规则的数据消费流水线
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
+import pendulum
 from airflow import DAG
+try:
+    from airflow.models import Variable
+except Exception:
+    class Variable:
+        @staticmethod
+        def get(key, default_var=None, deserialize_json=False):
+            return default_var
 from airflow.operators.python import PythonOperator
 from json_report_generator import generate_summary_report_to_json_file
 
@@ -12,7 +20,7 @@ from json_report_generator import generate_summary_report_to_json_file
 default_args = {
     'owner': 'phoenix',
     'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
+    'start_date': pendulum.datetime(2024, 1, 1, tz="Asia/Shanghai"),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
@@ -20,11 +28,13 @@ default_args = {
 }
 
 # 创建DAG
+SUMMARY_DAG_SCHEDULE = Variable.get("summary_generation_dag_schedule", default_var='0 15 * * *')
+
 dag = DAG(
     'summary_generation_dag',
     default_args=default_args,
     description='生成每日Top 100新闻摘要JSON报告 (按6AM规则)',
-    schedule_interval='0 15 * * *',  # 北京时间23:00 (UTC 15:00)
+    schedule_interval=SUMMARY_DAG_SCHEDULE,
     catchup=False,
     tags=['phoenix', 'summary', 'report'],
 )

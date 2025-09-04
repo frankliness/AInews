@@ -2,7 +2,7 @@
 
 ## 🎯 系统概述
 
-Phoenix v2.4.1 是一个基于Apache Airflow的智能新闻处理系统，专注于高质量新闻事件的采集、评分和摘要生成。系统通过EventRegistry API实现新闻采集，采用五维度评分算法和双重话题抑制机制，实现新闻内容的智能去重和优先级排序。
+Phoenix v2.5.0 是一个基于Apache Airflow的智能新闻处理系统，专注于高质量新闻事件的采集、评分、摘要生成与 AI 选题卡片生产，并自动化邮件分发。
 
 ### 核心特性
 - **智能新闻采集**: 基于EventRegistry API的实时新闻采集，支持多源并行抓取
@@ -98,12 +98,12 @@ cd /opt/phoenix
 # 克隆项目代码
 git clone https://github.com/frankliness/AInews.git .
 
-# 创建必要目录
-mkdir -p logs exports
-chmod 755 logs exports
+# 创建必要目录（新增 gemini_outputs）
+mkdir -p logs exports gemini_outputs
+chmod 755 logs exports gemini_outputs
 ```
 
-#### 5. 配置环境变量
+#### 5. 配置环境变量与 GCP 认证
 
 ```bash
 # 创建环境配置文件
@@ -119,6 +119,16 @@ PGADMIN_DEFAULT_PASSWORD=phoenix123
 TZ=Asia/Shanghai
 PGTZ=Asia/Shanghai
 EOF
+
+##### 配置 GCP 服务账号密钥（用于 Vertex AI / Gemini）
+
+1) 在 GCP 控制台为项目创建服务账号并授予 Vertex AI User 与 Storage Object Viewer 等必要权限；
+2) 创建 JSON Key 并下载到服务器，例如保存为 `/opt/phoenix/config/ainews-468705-2829ec9f5db8.json`；
+3) 确认 `docker-compose.phoenix.yml` 中已将 `./config` 挂载至容器 `/opt/airflow/config`，并设置了环境变量：
+
+```yaml
+GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/config/ainews-468705-2829ec9f5db8.json
+```
 ```
 
 #### 6. 启动Phoenix系统
@@ -157,7 +167,7 @@ Phoenix系统使用Airflow Variables来管理API密钥和配置参数。部署�
 - **用户名**: `phoenix_admin`
 - **密码**: `phoenix123`
 
-### 2. 配置EventRegistry API密钥
+### 2. 配置EventRegistry API密钥与 Gemini/Gmail 参数
 
 在Airflow Web界面中，进入 **Admin > Variables**，添加以下变量：
 
@@ -167,7 +177,23 @@ Phoenix系统使用Airflow Variables来管理API密钥和配置参数。部署�
 |--------|------|------|--------|
 | `ainews_eventregistry_apikeys` | JSON | EventRegistry API密钥列表 | `{"keys":["your_api_key_1","your_api_key_2"]}` |
 
-#### 可选配置变量
+| 变量名 | 类型 | 描述 | 示例值 |
+|--------|------|------|--------|
+| `google_cloud_project` | String | GCP 项目 ID | `ainews-468705` |
+| `google_cloud_location` | String | Vertex 区域 | `us-central1` |
+| `gemini_model_id` | String | Gemini 模型 ID | `gemini-2.5-pro` |
+| `gemini_dag_schedule` | String | DAG 调度（北京） | `0 6 * * *` |
+| `email_dag_schedule` | String | DAG 调度（北京） | `30 6 * * *` |
+| `gmail_smtp_user` | String | Gmail 账户 | `your@gmail.com` |
+| `gmail_smtp_password` | String | Gmail 应用专用密码 | `app_password` |
+| `business_report_email_list` | JSON | 业务收件人列表 | `[
+  "biz@xxx.com"
+]` |
+| `system_alert_email_list` | JSON | 报警收件人列表 | `[
+  "alert@xxx.com"
+]` |
+
+#### 可选配置变量（含 Gemini/Email）
 
 | 变量名 | 类型 | 默认值 | 描述 |
 |--------|------|--------|------|
@@ -177,6 +203,18 @@ Phoenix系统使用Airflow Variables来管理API密钥和配置参数。部署�
 | `ainews_popular_events_limit` | String | `30` | 热门事件数量限制 |
 | `ainews_breaking_events_limit` | String | `20` | 突发事件数量限制 |
 | `ainews_breaking_recent_hours` | String | `6` | 突发事件时间范围（小时） |
+
+| 变量名 | 类型 | 默认值 | 描述 |
+|--------|------|--------|------|
+| `gemini_temperature` | String | `0.3` | 采样温度 |
+| `gemini_top_p` | String | `0.9` | Top-p |
+| `gemini_max_output_tokens` | String | `8192` | 最大 token 数 |
+| `gemini_streaming_enabled` | String | `true` | 是否启用流式 |
+| `gemini_request_timeout_seconds` | String | `300` | 单次调用超时（秒）|
+| `gemini_max_retries` | String | `3` | 最大重试次数 |
+| `gemini_user_prompt_template` | String | `见代码` | 生成提示词模板 |
+| `gemini_file_selection_strategy` | String | `by_ds_then_latest` | 输入文件选择策略 |
+| `email_report_selection_strategy` | String | `latest_daily_single` | 邮件报告选择策略 |
 
 #### 评分权重配置
 

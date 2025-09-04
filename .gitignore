@@ -118,7 +118,10 @@ Thumbs.db
 # Project specific
 .direnv/
 logs/
-exports/
+exports/*
+!exports/.gitkeep
+gemini_outputs/*
+!gemini_outputs/.gitkeep
 *.db
 *.sqlite
 *.sqlite3
@@ -134,3 +137,5 @@ airflow-webserver.pid
 # Temporary files
 *.tmp
 *.temp
+# 忽略 Google Cloud 服务账号密钥文件
+config/ainews-468705-2829ec9f5db8.json

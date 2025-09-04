@@ -4,11 +4,19 @@ Phoenix News Pipeline V2 - 精英数据动脉
 """
 
 from datetime import datetime, timedelta
+import pendulum
 import logging
 import json
 import pandas as pd
 import psycopg2
 from airflow import DAG
+try:
+    from airflow.models import Variable
+except Exception:
+    class Variable:
+        @staticmethod
+        def get(key, default_var=None, deserialize_json=False):
+            return default_var
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 from airflow.hooks.postgres_hook import PostgresHook
@@ -28,7 +36,7 @@ log = logging.getLogger(__name__)
 default_args = {
     'owner': 'phoenix',
     'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
+    'start_date': pendulum.datetime(2024, 1, 1, tz="Asia/Shanghai"),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
@@ -373,11 +381,13 @@ def process_and_score_articles():
 
 
 # 创建DAG
+INGESTION_DAG_SCHEDULE = Variable.get("ingestion_scoring_dag_schedule", default_var='0 14 * * *')
+
 dag = DAG(
     'ingestion_scoring_pipeline',
     default_args=default_args,
     description='每日运行的新闻抓取与高级打分流水线',
-    schedule_interval='0 14 * * *',  # 每天北京时间22:00运行 (UTC 14:00)
+    schedule_interval=INGESTION_DAG_SCHEDULE,
     catchup=False,
     tags=['phoenix', 'ingestion', 'scoring'],
 )
